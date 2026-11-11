@@ -289,7 +289,7 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 - **Menu dessiné** (`assets/menu-accueil.webp`, 1024×1536, maquette du joueur) : posé en **carte réduite** (échelle
   `MENU_IMG.k` 0,345, à y 362) sur le décor du titre, qui reste visible autour (titre, record, sous-titre, muraille).
   On garde le haut de la page (boutons, médaillons, jusqu'à `coupe` 1165), prolongé d'une marge de papier vierge ;
-  le haut du drapeau du coin bas gauche est recouvert de papier vierge. La carte est préparée une fois
+  le haut du drapeau du coin bas gauche est recouvert de papier vierge (papier uni de la couleur exacte du bas de l'image + raccord en dégradé : plus de trait droit à la jonction). La carte est préparée une fois
   (`preparerCarteMenu`) : papier **recoloré** vers la teinte du décor (`PAPIER_IMAGE_MENU` → `PAPIER_DECOR`, les
   encres sombres restent inchangées) et **bords fondus** (`FONDU_MENU` 46 px, dégradé irrégulier façon lavis) : plus
   de rectangle, le cadre de l'image disparaît dans le fondu. Zones de clic mesurées dans `MENU_IMG` (Jouer, Héritage, Classement, Options, médaillons Idée / Bug) ; au
@@ -317,6 +317,9 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   Trésor de guerre (encre de départ +80/niv., max 5) · Fondations profondes (muraille +100 PV/niv., max 5) ·
   Mortier sacré (+1 PV/s/niv., max 4) · Lames ancestrales (dégâts +5 %/niv., max 6) · Archers vétérans (+1 archer
   et +1 place/niv., max 3) · Mémoire des anciens (XP +10 %/niv., max 5) · Veine de cristal (+3 cristaux/niv., max 4).
+- **Fin de partie** : quand le pavillon a fini de s'effondrer, l'Héritage s'ouvre d'abord (`ouvrirHeritage(true)`,
+  panneau plus haut) : « +N sceaux gagnés · M à dépenser », puis **Rejouer** (relance aussitôt avec le même plateau,
+  Entrée) ou **Suivant →** (bilan de la partie, Échap / ✕ / flèche droite). Un clic à côté ne ferme pas le panneau.
 - Appliqués dans `nouvellePartie`, `multDegats`, `regenMur`, `capArchers` et le gain d'XP, via `herit(id)`.
 - Mémorisé dans le navigateur : `muraille-sceaux`, `muraille-heritage` (localStorage).
 - Style : même papier que la carte du menu d'accueil (`papierFondu(w, h, fondu)` : teinte du décor, grain, bords

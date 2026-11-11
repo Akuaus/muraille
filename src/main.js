@@ -2619,6 +2619,7 @@ let refusAnim = null;
 function refus(r) { refusAnim = { r, t: 0 }; }
 
 function clic(p) {
+  if (ecran === 'fin' && heritageOuvert) { clicHeritage(p); return; }
   if (ecran === 'fin' && surMedaillon(p, BTN_IDEE_FIN)) { ouvrirRetour('idee'); return; }
   if (ecran === 'fin' && surMedaillon(p, BTN_CLASSEMENT_FIN)) { ouvrirClassement(true); return; }
   if (ecran === 'titre' && surMedaillon(p, BTN_CLASSEMENT_TITRE)) { ouvrirClassement(false); return; }
@@ -2701,11 +2702,15 @@ addEventListener('keydown', ev => {
   if (retourOuvert || classementOuvert) return; // on écrit (retour, pseudo) : les touches ne pilotent plus le jeu
   if (ecran === 'titre') { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); ecran = 'accueil'; } return; }
   if (ecran === 'accueil') {
-    if (heritageOuvert) { if (ev.key === 'Escape' || ev.key === 'Enter' || ev.key === ' ') heritageOuvert = false; return; }
+    if (heritageOuvert) { if (ev.key === 'Escape' || ev.key === 'Enter' || ev.key === ' ') fermerHeritage(); return; }
     if (ev.key === 'Escape') { if (!retourSousMenu()) ecran = 'titre'; return; }
     if (sousMenu === 'commandes' && (ev.key === ' ' || ev.key === 'Enter')) { sousMenu = 'options'; return; }
     if (!sousMenu && (ev.key === ' ' || ev.key === 'Enter')) { ev.preventDefault(); ecran = 'preparation'; }
     else if (ev.key.toLowerCase() === 'h' || ev.key === '?') sousMenu = 'commandes';
+    return;
+  }
+  if (ecran === 'fin' && heritageOuvert) { // Entrée = Rejouer, Échap / → = Suivant
+    if (ev.key === 'Enter') rejouerDepuisHeritage(); else if (ev.key === 'Escape' || ev.key === 'ArrowRight') fermerHeritage();
     return;
   }
   if (ecran === 'fin') { if (ev.key === ' ' || ev.key === 'Enter') ecran = 'preparation'; return; }
@@ -3355,7 +3360,7 @@ function majEffondrement(dt) {
   // la toile tremble pendant la chute
   const sec = ef.t < EFFONDREMENT.duree ? 4 * (1 - ef.t / EFFONDREMENT.duree) : 0;
   canvas.style.transform = sec > 0.2 ? `translate(${rand(-sec, sec).toFixed(1)}px, ${rand(-sec, sec).toFixed(1)}px)` : '';
-  if (ef.t >= EFFONDREMENT.fin) { canvas.style.transform = ''; ecran = 'fin'; }
+  if (ef.t >= EFFONDREMENT.fin) { canvas.style.transform = ''; ecran = 'fin'; ouvrirHeritage(true); }
 }
 function dessinerMuraille(t) {
   // sur le parapet : dessinées avant le mur, qui en cache la base
@@ -4583,6 +4588,15 @@ let heritageOuvert = false;
 const PANNEAU_HERITAGE = { x: 34, y: 130, w: W - 68, h: 690 };
 const rectAchatHeritage = i => ({ x: PANNEAU_HERITAGE.x + PANNEAU_HERITAGE.w - 150, y: PANNEAU_HERITAGE.y + 132 + i * 78, w: 124, h: 50 });
 const BTN_FERMER_HERITAGE = { x: PANNEAU_HERITAGE.x + PANNEAU_HERITAGE.w - 50, y: PANNEAU_HERITAGE.y + 12, w: 38, h: 38 };
+// Fin de partie : l'Héritage s'ouvre d'abord (dépenser les sceaux gagnés), avec « Rejouer » (relance aussitôt, même
+// plateau) et « Suivant → » (le bilan de la partie : temps, record, classement…). Le panneau est alors plus haut.
+let heritageFin = false;
+const HAUTEUR_HERITAGE = { menu: 690, fin: 770 };
+function ouvrirHeritage(fin) { heritageFin = !!fin; PANNEAU_HERITAGE.h = fin ? HAUTEUR_HERITAGE.fin : HAUTEUR_HERITAGE.menu; heritageOuvert = true; }
+function fermerHeritage() { heritageOuvert = false; heritageFin = false; PANNEAU_HERITAGE.h = HAUTEUR_HERITAGE.menu; }
+const BTN_REJOUER_HERITAGE = () => ({ x: W / 2 - 215, y: PANNEAU_HERITAGE.y + PANNEAU_HERITAGE.h - 72, w: 200, h: 50 });
+const BTN_SUIVANT_HERITAGE = () => ({ x: W / 2 + 15, y: PANNEAU_HERITAGE.y + PANNEAU_HERITAGE.h - 72, w: 200, h: 50 });
+function rejouerDepuisHeritage() { fermerHeritage(); composerPlateau(); lancerPartie(); }
 // Papier aux bords fondus façon lavis (même style que la carte du menu d'accueil) : teinte du décor, grain, léger
 // vieillissement vers les bords, contour estompé irrégulier. Préparé une fois par taille.
 function papierFondu(w, h, f) {
@@ -4606,13 +4620,13 @@ const MARGE_FONDU_HERITAGE = 34;
 function dessinerHeritage() {
   const P = PANNEAU_HERITAGE, m = MARGE_FONDU_HERITAGE;
   ctx.fillStyle = 'rgba(27,23,25,0.22)'; ctx.fillRect(0, 0, W, H);
-  if (!fondHeritage) fondHeritage = papierFondu(P.w + 2 * m, P.h + 2 * m, 56);
-  ctx.drawImage(fondHeritage, P.x - m, P.y - m);
+  if (!fondHeritage || fondHeritage.h !== P.h) fondHeritage = { h: P.h, c: papierFondu(P.w + 2 * m, P.h + 2 * m, 56) };
+  ctx.drawImage(fondHeritage.c, P.x - m, P.y - m);
   texte('Héritage', W / 2, P.y + 38, 32, ENCRE, 'center', 'bold');
   ctx.fillStyle = ROUGE; ctx.fillRect(W / 2 - 55, P.y + 60, 110, 3);
   const bf = BTN_FERMER_HERITAGE, survolX = dedansLarge(souris, bf);
   texte('✕', bf.x + bf.w / 2, bf.y + bf.h / 2 + 1, survolX ? 30 : 26, survolX ? ROUGE : ENCRE, 'center', 'bold');
-  texte(`Sceaux : ${sceaux}`, W / 2, P.y + 88, 22, ROUGE, 'center', 'bold');
+  texte(heritageFin && G && G.sceauxGagnes ? `+${G.sceauxGagnes} sceaux gagnés · ${sceaux} à dépenser` : `Sceaux : ${sceaux}`, W / 2, P.y + 88, 22, ROUGE, 'center', 'bold');
   texte('1 sceau par minute tenue, +5 pour un nouveau record. Ces bonus durent pour toujours.', W / 2, P.y + 112, 13, '#5a4632', 'center', 'italic', SERIF, P.w - 40);
   HERITAGE.forEach((h, i) => {
     const n = herit(h.id), max = n >= h.max, cout = coutHeritage(h, n), ok = !max && sceaux >= cout, r = rectAchatHeritage(i), y = r.y + r.h / 2;
@@ -4633,6 +4647,13 @@ function dessinerHeritage() {
       texte(`${cout} sceau${cout > 1 ? 'x' : ''}`, r.x + r.w / 2, y - (survol ? 1 : 0), 16, ok ? PAPIER : 'rgba(243,228,207,0.6)', 'center', 'bold');
     }
   });
+  if (heritageFin) {
+    for (const [r, lib, rouge] of [[BTN_REJOUER_HERITAGE(), 'Rejouer', true], [BTN_SUIVANT_HERITAGE(), 'Suivant  →', false]]) {
+      const survol = dedans(souris, r);
+      ctx.drawImage(rouge ? boutonRouge(r.w, r.h) : boutonEncre(r.w, r.h, true), r.x - 6, r.y - 4 - (survol ? 1 : 0));
+      texte(lib, r.x + r.w / 2, r.y + r.h / 2 - (survol ? 1 : 0), 20, PAPIER, 'center', 'bold');
+    }
+  }
   if (refusAnim) {
     refusAnim.t += 1 / 60; const r = refusAnim.r;
     ctx.save(); ctx.globalAlpha = Math.max(0, 1 - refusAnim.t / 0.45); ctx.drawImage(cadreRouge(r.w, r.h), r.x - 12, r.y - 12); ctx.restore();
@@ -4640,7 +4661,11 @@ function dessinerHeritage() {
   }
 }
 function clicHeritage(p) {
-  if (dedansLarge(p, BTN_FERMER_HERITAGE) || !dedans(p, PANNEAU_HERITAGE)) { heritageOuvert = false; return; }
+  if (heritageFin) {
+    if (dedans(p, BTN_REJOUER_HERITAGE())) { rejouerDepuisHeritage(); return; }
+    if (dedans(p, BTN_SUIVANT_HERITAGE()) || dedansLarge(p, BTN_FERMER_HERITAGE)) { fermerHeritage(); return; }
+    if (!dedans(p, PANNEAU_HERITAGE)) return; // en fin de partie, un clic à côté ne ferme pas (on choisit Rejouer ou Suivant)
+  } else if (dedansLarge(p, BTN_FERMER_HERITAGE) || !dedans(p, PANNEAU_HERITAGE)) { fermerHeritage(); return; }
   HERITAGE.forEach((h, i) => { const r = rectAchatHeritage(i); if (dedans(p, r) && !acheterHeritage(h) && herit(h.id) < h.max) refus(r); });
 }
 let carteAccueil = null; // papier encadré au pinceau, sous le menu (préparé une fois)
@@ -4666,8 +4691,18 @@ function preparerCarteMenu() {
   const I = MENU_IMG, e = 2 * I.k, bas = 150; // marge de papier vierge sous les médaillons ; résolution ×2 de l'affichage (écrans fins)
   const w = Math.round(I.w * e), h = Math.round((I.coupe + bas) * e), c = creerCanvas(w, h), k = c.getContext('2d');
   k.drawImage(imageMenu, 0, 0, I.w, I.coupe, 0, 0, w, I.coupe * e);
-  k.drawImage(imageMenu, 0, 90, I.w, 70, 0, I.coupe * e - 1, w, bas * e + 1); // papier vierge du haut de la page, étiré
   k.drawImage(imageMenu, 52, 560, 100, 205, 52 * e, 962 * e, 100 * e, 205 * e); // le haut du drapeau, recouvert de papier vierge
+  // marge sous les médaillons : papier uni de la couleur exacte du bas de l'image (pixels clairs des dernières lignes),
+  // avec du grain, raccordé par un dégradé (sinon la jonction dessine un trait droit)
+  const yc = Math.round(I.coupe * e), bande = k.getImageData(0, yc - Math.round(14 * e), w, Math.round(10 * e)).data;
+  let pr = 0, pg = 0, pb = 0, np = 0;
+  for (let i = 0; i < bande.length; i += 4) if (bande[i] + bande[i + 1] + bande[i + 2] > 3 * 190) { pr += bande[i]; pg += bande[i + 1]; pb += bande[i + 2]; np++; }
+  const coulBas = `${pr / np | 0},${pg / np | 0},${pb / np | 0}`;
+  k.fillStyle = `rgb(${coulBas})`; k.fillRect(0, yc, w, h - yc);
+  for (let i = 0; i < w * (h - yc) / 60; i++) { k.fillStyle = `rgba(110,80,50,${Math.random() * 0.06})`; k.fillRect(Math.random() * w, yc + Math.random() * (h - yc), 1.5, 1.5); }
+  const raccord = k.createLinearGradient(0, yc - 16 * e, 0, yc + 2);
+  raccord.addColorStop(0, `rgba(${coulBas},0)`); raccord.addColorStop(1, `rgba(${coulBas},1)`);
+  k.fillStyle = raccord; k.fillRect(0, yc - 16 * e, w, 16 * e + 2);
   const id = k.getImageData(0, 0, w, h), d = id.data, f = FONDU_MENU * 2;
   const ratio = PAPIER_DECOR.map((v, i) => v / PAPIER_IMAGE_MENU[i]);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -4734,7 +4769,7 @@ function clicAccueil(p) {
   if (heritageOuvert) { clicHeritage(p); return; }
   if (clicSousMenu(p)) return;
   if (dedans(p, rectMenuImg(0))) { ecran = 'preparation'; return; }
-  if (dedans(p, rectMenuImg(1))) { heritageOuvert = true; return; }
+  if (dedans(p, rectMenuImg(1))) { ouvrirHeritage(false); return; }
   if (dedans(p, rectMenuImg(2))) { ouvrirClassement(false); return; }
   if (dedans(p, rectMenuImg(3))) { sousMenu = 'options'; return; }
   if (surMedaillon(p, medaillonMenuImg(MENU_IMG.idee, BTN_IDEE_ACC))) ouvrirRetour('idee');
@@ -5004,6 +5039,7 @@ function dessinerFin() {
   texte(`${CLIQUEZ} pour préparer une nouvelle défense`, W / 2, 570, 21, ENCRE, 'center', 'bold');
   medaillonRetour(BTN_IDEE_FIN, 'idee', 'Une idée ?'); medaillonRetour(BTN_BUG_FIN, 'bug', 'Un bug ?');
   medaillonRetour(BTN_CLASSEMENT_FIN, 'classement', G.scoreInscrit ? 'Classement' : 'Inscrire mon score');
+  if (heritageOuvert) dessinerHeritage();
 }
 
 // =====================================================================
