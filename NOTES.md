@@ -248,6 +248,13 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 - Limites : la plupart des textes restent petits sur un téléphone de 375 px (le jeu fait 720 px de large) ; non
   testé sur un vrai appareil (seulement en émulation 375 × 812).
 
+## Publication (GitHub)
+- Dépôt public : https://github.com/Akuaus/muraille (branche `main`, commits signés avec l'adresse noreply GitHub).
+- Jouable en ligne (GitHub Pages, branche `main`, racine) : https://akuaus.github.io/muraille/
+- Mettre à jour : `git add -A`, `git commit -m "…"`, `git push` depuis `jeux/muraille/` (le site se met à jour en ~1 min).
+- `.gitignore` : `.claude/`, `RETOURS.md`. En ligne, il n'y a pas le serveur de l'atelier : les idées / bugs envoyés par
+  les joueurs restent dans LEUR navigateur (pas de réception). Le classement mondial (Supabase) fonctionne.
+
 ## Classement des joueurs
 - **Médaillon trophée** : en haut à droite de l'écran titre (« Classement ») et au centre des médaillons de fin de partie
   (« Inscrire mon score », puis « Classement »). Fenêtre HTML (pinceau + plume) : en fin de partie, champ « Votre nom de
