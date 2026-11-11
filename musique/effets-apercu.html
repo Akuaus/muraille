@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Muraille · bruitages</title>
+  <style>
+    :root { --papier: #f3e4cf; --encre: #1b1719; --rouge: #c0232b; --ocre: #a8641c; }
+    html, body { margin: 0; min-height: 100%; background: var(--papier); color: var(--encre); font-family: Georgia, "Times New Roman", serif; }
+    main { max-width: 620px; margin: 0 auto; padding: 36px 16px; text-align: center; }
+    h1 { font-style: italic; font-size: 2.3em; margin: 0 0 4px; }
+    .sous { font-style: italic; opacity: .75; margin: 0 0 24px; }
+    h2 { font-size: 1.1em; margin: 26px 0 10px; font-style: italic; }
+    .grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    button { font: bold 16px "Segoe UI", Arial, sans-serif; color: var(--papier); background: var(--encre); border: 0; border-radius: 4px;
+             padding: 14px 10px; cursor: pointer; }
+    button small { display: block; font-weight: normal; font-size: 12px; opacity: .8; margin-top: 3px; }
+    button.feu { background: #8a3a12; }
+    button.mur { background: #4a3a2c; }
+    button:active { transform: translateY(1px); }
+    label { font-style: italic; display: inline-block; margin: 18px 10px 0; }
+    input[type=range] { width: 180px; vertical-align: middle; accent-color: var(--ocre); }
+    .notes { text-align: left; margin-top: 28px; font-size: 14px; line-height: 1.5; border-top: 1px solid rgba(27,23,25,.2); padding-top: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Bruitages</h1>
+  <p class="sous">Aperçu pour Muraille · pas encore intégrés au jeu · chaque clic varie un peu</p>
+
+  <h2>Un seul son</h2>
+  <div class="grille">
+    <button data-son="fleche">Tir de flèche<small>corde + sifflement</small></button>
+    <button data-son="flecheFeu" class="feu">Flèche enflammée<small>corde + souffle de feu qui crépite</small></button>
+    <button data-son="murLame" class="mur">Attaque sur le mur · lame<small>petits monstres : tintement sur la pierre</small></button>
+    <button data-son="murMassue" class="mur">Attaque sur le mur · massue<small>gros monstres : impact sourd + éboulis</small></button>
+  </div>
+
+  <h2>En situation</h2>
+  <div class="grille">
+    <button data-demo="volee">Volée de 8 archers<small>tirs décalés sur ~1 s</small></button>
+    <button data-demo="voleeFeu" class="feu">Volée enflammée<small>8 flèches de feu</small></button>
+    <button data-demo="siege" class="mur">Siège de gobelins<small>6 lames qui frappent le mur</small></button>
+    <button data-demo="trolls" class="mur">Trolls au pied du mur<small>3 coups de massue</small></button>
+  </div>
+
+  <label>Volume des bruitages <input type="range" id="volume" min="0" max="100" value="70"></label>
+  <label><input type="checkbox" id="avecMusique"> avec la musique de combat en fond</label>
+
+  <div class="notes">
+    Tous les sons sont synthétisés (aucun fichier). Dans le jeu, le volume des bruitages sera réglable séparément de la musique,
+    et les tirs seront limités pour qu'une muraille de 26 archers reste agréable à l'oreille.
+  </div>
+</main>
+
+<script src="combat.js"></script>
+<script src="effets.js"></script>
+<script>
+'use strict';
+let ctx = null, sortie = null, musique = null, minuterie = null;
+function audio() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -10; comp.ratio.value = 3; comp.connect(ctx.destination);
+    sortie = ctx.createGain(); sortie.gain.value = document.getElementById('volume').value / 100; sortie.connect(comp);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+const jouer = (nom, dt = 0, vol = 1) => Effets[nom](audio(), sortie, ctx.currentTime + 0.02 + dt, vol);
+const DEMOS = {
+  volee: () => { for (let i = 0; i < 8; i++) jouer('fleche', Math.random() * 1.0, 0.6); },
+  voleeFeu: () => { for (let i = 0; i < 8; i++) jouer('flecheFeu', Math.random() * 1.0, 0.55); },
+  siege: () => { for (let i = 0; i < 6; i++) jouer('murLame', i * 0.28 + Math.random() * 0.15, 0.75); },
+  trolls: () => { for (let i = 0; i < 3; i++) jouer('murMassue', i * 0.7 + Math.random() * 0.1, 1); },
+};
+document.querySelectorAll('[data-son]').forEach(b => b.onclick = () => jouer(b.dataset.son));
+document.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => { audio(); DEMOS[b.dataset.demo](); });
+document.getElementById('volume').oninput = e => { if (sortie) sortie.gain.setTargetAtTime(e.target.value / 100, ctx.currentTime, 0.05); };
+// musique en fond (au volume du jeu), pour juger l'équilibre entre les deux
+document.getElementById('avecMusique').onchange = e => {
+  const c = audio();
+  if (e.target.checked) {
+    const g = c.createGain(); g.gain.value = 0.5; g.connect(c.destination);
+    musique = { g, p: MusiqueCombat.creer(c, g), mesure: 4, pas: 0, prochain: c.currentTime + 0.1 };
+    minuterie = setInterval(() => {
+      while (musique.prochain < c.currentTime + 0.15) {
+        musique.p.programmerPas(musique.mesure, musique.pas, musique.prochain);
+        musique.prochain += MusiqueCombat.DUREE_PAS;
+        if (++musique.pas === 16) { musique.pas = 0; if (++musique.mesure === MusiqueCombat.MESURES) musique.mesure = MusiqueCombat.BOUCLE_DEBUT; }
+      }
+    }, 25);
+  } else if (musique) {
+    clearInterval(minuterie); const g = musique.g; g.gain.setTargetAtTime(0, c.currentTime, 0.2); setTimeout(() => g.disconnect(), 1500); musique = null;
+  }
+};
+</script>
+</body>
+</html>
