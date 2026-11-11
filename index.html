@@ -37,10 +37,13 @@
     // Le jeu dessine des images au démarrage (cartes, bandeaux…) : on attend les deux polices calligraphiées
     // (au plus 2,5 s, puis on démarre quand même avec les polices de secours).
     (function () {
+      // VERSION : à changer à chaque mise en ligne, pour que les navigateurs prennent les nouveaux scripts
+      // (GitHub Pages les garde sinon 10 minutes en cache).
+      const VERSION = '2026-11-11c';
       const scripts = ['musique/combat.js', 'musique/effets.js', 'src/main.js'];
       const charger = () => (function suivant(i) {
         if (i >= scripts.length) return;
-        const s = document.createElement('script'); s.src = scripts[i];
+        const s = document.createElement('script'); s.src = scripts[i] + '?v=' + VERSION;
         s.onload = s.onerror = () => suivant(i + 1);
         document.body.appendChild(s);
       })(0);

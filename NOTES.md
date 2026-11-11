@@ -251,6 +251,7 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 ## Publication (GitHub)
 - Dépôt public : https://github.com/Akuaus/muraille (branche `main`, commits signés avec l'adresse noreply GitHub).
 - Jouable en ligne (GitHub Pages, branche `main`, racine) : https://akuaus.github.io/muraille/
+- **Avant chaque mise en ligne, changer `VERSION` dans `index.html`** (sinon les navigateurs gardent l'ancien `main.js` jusqu'à 10 min : c'est ce qui affichait encore « serveur injoignable » après la correction).
 - Mettre à jour : `git add -A`, `git commit -m "…"`, `git push` depuis `jeux/muraille/` (le site se met à jour en ~1 min).
 - `.gitignore` : `.claude/`, `RETOURS.md`. Le classement mondial (Supabase) fonctionne en ligne.
 - **Idées et bugs en ligne** : table Supabase `retours` (`classement/retours.sql`, exécuté le 11/11/2026 : type idee/bug,
@@ -326,6 +327,16 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   estompés irréguliers façon lavis), voile léger (0,22), plus de cadre rectangulaire ; ✕ seul (rouge et plus gros au
   survol) ; bandes alternées en lavis aux extrémités estompées.
 - Remarque : ces bonus rendent le classement moins équitable entre anciens et nouveaux joueurs.
+
+## Tutoriel (premières parties)
+- Conseils du maître d'armes (`TUTO`, `majTuto` / `dessinerTuto` / `clicTuto`) : chacun apparaît une seule fois, au moment
+  où il devient utile ; le jeu se fige, la zone concernée est éclairée (voile percé + cadre rouge qui pulse), bulle de
+  papier fondu reliée par un trait rouge. « Compris » / Entrée / Espace / Échap / clic ailleurs = suivant ;
+  « Passer le tutoriel » coupe tout. Plus grand sur téléphone.
+- 9 conseils, dans l'ordre : encre (1,5 s) · bâtiments (6 s et assez d'encre) · améliorer (premier panneau ouvert) ·
+  muraille (sous 80 % : réparer) · expérience / niveaux (barre à moitié) · cristaux (sorts + reliques) · talents (✦,
+  dès qu'un talent est achetable) · hordes (8 s avant) · nuit.
+- Mémorisé : localStorage `muraille-tuto` (liste des conseils vus, ou 'fini'). Options → « Revoir le tutoriel ».
 
 ## Contrôles
 - Clic sur une carte : ouvre son panneau (améliorer + action : recruter / catapulte / réparer)

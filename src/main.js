@@ -1619,6 +1619,7 @@ let ecran = 'titre'; // 'titre' | 'jeu' | 'fin'
 let souris = { x: -1, y: -1 };
 
 function nouvellePartie() {
+  tutoActif = null;
   G = {
     t: 0, or: 60, kills: 0, orGagne: 0,
     mur: { pv: 600, max: 600 },
@@ -2345,7 +2346,8 @@ function dessinerSousMenu() {
     placerReglagesSon(BTN_MENU(0).y); dessinerReglageMusique(); dessinerReglageBruitages();
     boutonMenu(BTN_MENU(2), 'Retour');
   } else {
-    boutonMenu(BTN_MENU(0), 'Audio'); boutonMenu(BTN_MENU(1), 'Commandes'); boutonMenu(BTN_MENU(2), 'Retour');
+    boutonMenu(BTN_MENU(0), 'Audio'); boutonMenu(BTN_MENU(1), 'Commandes');
+    boutonMenu(BTN_MENU(2), !tutoFini && tutoVus.size === 0 ? 'Tutoriel activé ✓' : 'Revoir le tutoriel'); boutonMenu(BTN_MENU(3), 'Retour');
     if (sousMenu === 'commandes') dessinerAide();
   }
   return true;
@@ -2357,7 +2359,8 @@ function clicSousMenu(p) {
   if (sousMenu === 'options') {
     if (dedans(p, BTN_MENU(0))) sousMenu = 'audio';
     else if (dedans(p, BTN_MENU(1))) sousMenu = 'commandes';
-    else if (dedans(p, BTN_MENU(2))) sousMenu = null;
+    else if (dedans(p, BTN_MENU(2))) revoirTuto();
+    else if (dedans(p, BTN_MENU(3))) sousMenu = null;
     return true;
   }
   placerReglagesSon(BTN_MENU(0).y);
@@ -2630,6 +2633,7 @@ function clic(p) {
   if (ecran === 'preparation') { clicPreparation(p); return; }
   if (G && G.effondrement) return; // le pavillon s'effondre : plus aucune action
   if (Math.hypot(p.x - ENGRENAGE.x, p.y - ENGRENAGE.y) < ENGRENAGE.r) { basculerPause(); return; }
+  if (tutoActif && !G.pause) { clicTuto(p); return; }
   if (G.reliquesOuvert && !G.pause) {
     let surCarte = false;
     RELIQUES.forEach((r, i) => { const rr = rectRelique(i); if (dedans(p, rr)) { surCarte = true; if (!acheterRelique(r)) refus(rr); } });
@@ -2722,6 +2726,7 @@ addEventListener('keydown', ev => {
   }
   if (ecran !== 'jeu' || G.effondrement) return;
   const k = ev.key.toLowerCase();
+  if (tutoActif && !G.pause) { if ((k === 'enter' || k === ' ' || k === 'escape') && performance.now() - tutoActif.t0 > 400) fermerTuto(false); ev.preventDefault(); return; }
   if (G.choixNiveau && !G.pause && k >= '1' && k <= '3') {
     const a = G.choixNiveau.cartes[+k - 1];
     if (a && performance.now() - G.choixNiveau.ouvert > 350) choisirAmelioration(a);
@@ -4062,6 +4067,102 @@ function lignesDe(txt, maxW, police) {
   for (const m of mots) { const essai = l ? l + ' ' + m : m; if (ctx.measureText(essai).width > maxW && l) { lignes.push(l); l = m; } else l = essai; }
   if (l) lignes.push(l); return lignes;
 }
+// =====================================================================
+//  TUTORIEL : les conseils du maître d'armes, pendant les premières parties. Chaque conseil apparaît une seule fois,
+//  au moment où il devient utile (son déclencheur) : le jeu se fige, la zone concernée est éclairée (le reste voilé),
+//  une bulle de papier explique. « Compris » (ou Entrée / Espace / Échap) continue ; « Passer le tutoriel » coupe tout.
+//  Mémorisé dans le navigateur : localStorage 'muraille-tuto' (liste des conseils vus, ou 'fini'). Options → Tutoriel.
+// =====================================================================
+const ZONE_ENCRE = { x: W - 354, y: 12, w: 176, h: 46 };
+const ZONE_XP = { x: 14, y: 50, w: 216, h: 30 };
+const ZONE_HORDE = { x: 14, y: 75, w: 230, h: 22 };
+const zoneSorts = () => { const a = rectSort(0), b = rectSort(SORTS.length - 1); return { x: a.x - a.r - 4, y: a.y - a.r - 4, w: b.x - a.x + 2 * a.r + 8, h: 2 * a.r + 8 }; };
+const zoneCartes = () => { const a = rectCarte(0), b = rectCarte(BATIMENTS.length - 1); return { x: a.x - 4, y: a.y - 4, w: b.x + b.w - a.x + 8, h: a.h + 8 }; };
+const coutMinCarte = () => Math.min(...BATIMENTS.map(b => G.bat[b.id] < b.max ? b.cout(G.bat[b.id]) : Infinity));
+const TUTO = [
+  { id: 'encre', titre: "L'encre", quand: () => G.t > 1.5, zones: () => [ZONE_ENCRE],
+    texte: () => "Vos archers tirent tout seuls. Chaque monstre abattu se liquéfie en encre : c'est votre monnaie, pour bâtir, recruter et réparer." },
+  { id: 'cartes', titre: 'Les bâtiments', quand: () => G.t > 6 && G.or >= coutMinCarte(), zones: () => [zoneCartes()],
+    texte: () => `Vous avez assez d'encre pour bâtir ! ${CLIQUEZ} une carte pour ouvrir son panneau. Chaque bâtiment se renforce niveau après niveau.` },
+  { id: 'panneau', titre: 'Améliorer', quand: () => G.choix !== null, zones: () => [panneauRect(G.choix)],
+    texte: () => "« Améliorer » fait monter le bâtiment d'un niveau, contre de l'encre. L'autre bouton lance son action : recruter un archer, tirer à la catapulte… Les prix montent à chaque niveau." },
+  { id: 'muraille', titre: 'La muraille', quand: () => G.mur.pv < G.mur.max * 0.8, zones: () => [ZONE_PV],
+    texte: () => `Les monstres frappent la muraille. ${CLIQUEZ} sa barre de vie pour la réparer contre de l'encre. Si elle tombe, la partie est perdue.` },
+  { id: 'niveau', titre: "L'expérience", quand: () => G.niveau > 1 || G.xp >= xpPourNiveau(G.niveau) * 0.5, zones: () => [ZONE_XP],
+    texte: () => "Les monstres donnent aussi de l'expérience (la barre dorée). À chaque niveau gagné, le jeu s'arrête : choisissez une amélioration parmi les cartes proposées." },
+  { id: 'cristaux', titre: 'Les cristaux', quand: () => G.cristaux > 0, zones: () => [ZONE_CRISTAUX, zoneSorts()],
+    texte: () => `Des cristaux ! Plus rares que l'encre, ils tombent des chefs, des hordes repoussées, et arrivent à l'aube. Ils lancent les sorts (les médaillons ronds) et achètent des reliques (${CLIQUEZ.toLowerCase()} les cristaux).` },
+  { id: 'talents', titre: 'Les talents', quand: () => BATIMENTS.some(b => talentPossible(b.id)), zones: () => [zoneCartes()],
+    texte: () => "Avec des cristaux, un bâtiment construit peut aussi apprendre un talent : ouvrez son panneau, c'est le bouton ✦ du bas. Un talent change sa façon de combattre." },
+  { id: 'horde', titre: 'Les hordes', quand: () => { const h = etatHorde(G.t); return G.t > 8 && !h.horde && h.dans < 8; }, zones: () => [ZONE_HORDE],
+    texte: () => "Une horde approche : beaucoup de monstres d'un coup. Préparez-vous (réparez, recrutez) ; la repousser rapporte des cristaux, puis vient un court répit." },
+  { id: 'nuit', titre: 'La nuit', quand: () => niveauNuit(G.t) > 0.3, zones: () => [],
+    texte: () => "La nuit tombe : plus de monstres et vos archers voient moins loin, mais le butin est meilleur. Tenez jusqu'à l'aube : elle offre des cristaux." },
+];
+let tutoVus = new Set(), tutoFini = false, tutoActif = null;
+try { const v = JSON.parse(localStorage.getItem('muraille-tuto') || 'null'); if (v === 'fini') tutoFini = true; else if (Array.isArray(v)) tutoVus = new Set(v); } catch (e) { /* ignoré */ }
+function sauverTuto() { try { localStorage.setItem('muraille-tuto', JSON.stringify(tutoFini ? 'fini' : [...tutoVus])); } catch (e) { /* ignoré */ } }
+function majTuto() {
+  if (tutoFini || tutoActif || ecran !== 'jeu' || !G || G.pause || G.choixNiveau || G.reliquesOuvert || G.effondrement) return;
+  for (const e of TUTO) if (!tutoVus.has(e.id) && e.quand()) { tutoActif = { etape: e, t0: performance.now() }; return; }
+}
+function fermerTuto(tout) {
+  if (!tutoActif) return;
+  tutoVus.add(tutoActif.etape.id);
+  if (tout || TUTO.every(e => tutoVus.has(e.id))) tutoFini = true;
+  tutoActif = null; sauverTuto();
+}
+function revoirTuto() { tutoFini = false; tutoVus = new Set(); tutoActif = null; sauverTuto(); }
+let fondTuto = null;
+function dessinerTuto() {
+  const T = tutoActif, e = T.etape, zones = e.zones().filter(Boolean), a = clamp((performance.now() - T.t0) / 250, 0, 1);
+  // voile percé : la (les) zone(s) concernée(s) restent éclairées
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.beginPath(); ctx.rect(0, 0, W, H);
+  for (const r of zones) ctx.rect(r.x - 6, r.y - 6, r.w + 12, r.h + 12);
+  ctx.fillStyle = 'rgba(27,23,25,0.55)'; ctx.fill('evenodd');
+  const pouls = 0.6 + 0.4 * Math.sin(performance.now() / 260);
+  ctx.strokeStyle = ROUGE; ctx.lineWidth = 3; ctx.globalAlpha = a * pouls;
+  for (const r of zones) ctx.strokeRect(r.x - 6, r.y - 6, r.w + 12, r.h + 12);
+  ctx.restore();
+  // bulle : sous la zone si elle est en haut de l'écran, au-dessus sinon
+  const tt = TACTILE ? 21 : 17, pl = tt + 8, bw = TACTILE ? 580 : 460; // plus grand sur téléphone
+  const lignes = lignesDe(e.texte(), bw - 64, `${tt}px ${SERIF}`), bh = 70 + lignes.length * pl + 76;
+  // placement par rapport à l'ensemble des zones éclairées (la bulle ne doit en cacher aucune)
+  const z = zones.length ? zones.reduce((u, r) => { const x = Math.min(u.x, r.x), y = Math.min(u.y, r.y); return { x, y, w: Math.max(u.x + u.w, r.x + r.w) - x, h: Math.max(u.y + u.h, r.y + r.h) - y }; }) : null;
+  const cy = z ? z.y + z.h / 2 : H / 2;
+  let by = !z ? (H - bh) / 2 : cy < H / 2 ? z.y + z.h + 34 : z.y - bh - 34;
+  by = clamp(by, 16, H - bh - 16);
+  const bx = (W - bw) / 2, m = 30;
+  if (!fondTuto || fondTuto.h !== bh || fondTuto.w !== bw) fondTuto = { h: bh, w: bw, c: papierFondu(bw + 2 * m, bh + 2 * m, 48) };
+  // trait de pinceau de la bulle vers la zone
+  if (z) {
+    const x1 = clamp(z.x + z.w / 2, bx + 40, bx + bw - 40), y1 = cy < H / 2 ? by : by + bh, x2 = z.x + z.w / 2, y2 = cy < H / 2 ? z.y + z.h + 8 : z.y - 8;
+    ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = ROUGE; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - 14 * Math.cos(ang - 0.45), y2 - 14 * Math.sin(ang - 0.45));
+    ctx.moveTo(x2, y2); ctx.lineTo(x2 - 14 * Math.cos(ang + 0.45), y2 - 14 * Math.sin(ang + 0.45)); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save(); ctx.globalAlpha = a; ctx.drawImage(fondTuto.c, bx - m, by - m); ctx.restore();
+  const n = TUTO.indexOf(e) + 1;
+  texte(`Conseil ${n} / ${TUTO.length}`, bx + bw - 26, by + 26, 12, '#7a6a55', 'right', 'italic', SERIF);
+  texte(e.titre, bx + 30, by + 34, 25, ENCRE, 'left', 'bold');
+  ctx.fillStyle = ROUGE; ctx.fillRect(bx + 30, by + 52, 70, 3);
+  lignes.forEach((l, i) => texte(l, bx + 32, by + 80 + i * pl, tt, ENCRE, 'left', '', SERIF));
+  const bc = { x: bx + bw - 30 - 160, y: by + bh - 62, w: 160, h: 46 }, bp = { x: bx + 24, y: by + bh - 56, w: 190, h: 34 };
+  const survol = dedans(souris, bc);
+  ctx.drawImage(boutonRouge(bc.w, bc.h), bc.x - 6, bc.y - 4 - (survol ? 1 : 0));
+  texte('Compris', bc.x + bc.w / 2, bc.y + bc.h / 2 - (survol ? 1 : 0), 19, PAPIER, 'center', 'bold');
+  texte('Passer le tutoriel', bp.x + 8, bp.y + bp.h / 2, 14, dedans(souris, bp) ? ROUGE : '#7a6a55', 'left', 'italic', SERIF);
+  T.boutons = { compris: bc, passer: bp };
+}
+function clicTuto(p) {
+  const T = tutoActif; if (performance.now() - T.t0 < 400) return; // évite de fermer par un clic déjà en cours
+  if (T.boutons && dedans(p, T.boutons.passer)) { fermerTuto(true); return; }
+  fermerTuto(false); // « Compris », ou un clic n'importe où
+}
 let bandeauNiveau = null;
 function dessinerChoixNiveau() {
   const c = G.choixNiveau;
@@ -4166,7 +4267,7 @@ function dessinerNiveauMusique() {
 }
 
 // Fond des sous-menus (Options, Audio) à l'accueil et en pause : papier fondu façon lavis, comme l'Héritage et le classement
-const FOND_SOUS_MENU = { x: W / 2 - 205, y: 312, w: 410, h: 292, m: 34 };
+const FOND_SOUS_MENU = { x: W / 2 - 205, y: 312, w: 410, h: 340, m: 34 };
 let fondSousMenu = null;
 function dessinerFondSousMenu() {
   const F = FOND_SOUS_MENU;
@@ -5055,12 +5156,14 @@ function boucle(maintenant) {
   else if (ecran === 'fin') dessinerFin();
   else {
     // accéléré : on découpe le pas de temps pour garder une simulation stable (pas ≤ 1/60 s environ)
-    if (!G.pause && !G.choixNiveau && !G.reliquesOuvert) {
+    majTuto();
+    if (!G.pause && !G.choixNiveau && !G.reliquesOuvert && !tutoActif) {
       const n = Math.ceil(G.vitesse);
       for (let i = 0; i < n && ecran === 'jeu' && !G.choixNiveau; i++) mettreAJour(dt * G.vitesse / n);
     }
     dessinerJeu();
     if (G.pause) dessinerPause();
+    else if (tutoActif) dessinerTuto();
     else if (G.choixNiveau) dessinerChoixNiveau();
     else if (G.reliquesOuvert) dessinerReliques();
   }
