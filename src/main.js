@@ -4449,32 +4449,42 @@ function ouvrirRetour(type) {
   setTimeout(() => f.el('texte').focus(), 50);
 }
 // retours gardés dans le navigateur faute de serveur : renvoyés dès que le serveur répond
+// Un retour part à deux endroits à la fois : la table Supabase « retours » (en ligne, lisible seulement depuis le
+// tableau de bord ; script : classement/retours.sql) et le serveur de l'atelier (RETOURS.md, quand on joue en local).
+// Il est considéré comme envoyé si l'un des deux l'a reçu.
+async function expedierRetour(r) {
+  const versSupabase = classementEnLigne()
+    ? appelSupabase('retours', { method: 'POST', headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ type: r.type, texte: r.texte.slice(0, 4000), contexte: { infos: String(r.contexte || '').slice(0, 1500), date: r.date || new Date().toISOString() } }) })
+        .then(() => true, () => false)
+    : Promise.resolve(false);
+  const versAtelier = location.protocol.startsWith('http')
+    ? fetch('/__retour/muraille', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) }).then(x => x.ok, () => false)
+    : Promise.resolve(false);
+  const [a, b] = await Promise.all([versSupabase, versAtelier]);
+  return a || b;
+}
 async function renvoyerRetoursEnAttente() {
   let l; try { l = JSON.parse(localStorage.getItem('muraille-retours') || '[]'); } catch (e) { return; }
   if (!l.length) return;
   const restants = [];
   for (const r of l) {
-    try { const rep = await fetch('/__retour/muraille', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...r, contexte: (r.contexte || '') + ' · envoyé en différé (écrit le ' + (r.date || '?') + ')' }) }); if (!rep.ok) restants.push(r); }
-    catch (e) { restants.push(r); }
+    if (!(await expedierRetour({ ...r, contexte: (r.contexte || '') + ' · envoyé en différé (écrit le ' + (r.date || '?') + ')' }))) restants.push(r);
   }
   try { if (restants.length) localStorage.setItem('muraille-retours', JSON.stringify(restants)); else localStorage.removeItem('muraille-retours'); } catch (e) { /* ignoré */ }
 }
-if (location.protocol.startsWith('http')) setTimeout(renvoyerRetoursEnAttente, 3000);
+setTimeout(renvoyerRetoursEnAttente, 3000);
 function fermerRetour() { if (fenetreRetour && fenetreRetour.parentNode) fenetreRetour.remove(); retourOuvert = false; }
 async function envoyerRetour(type, texte) {
   const f = fenetreRetour; texte = texte.trim();
   if (!texte) { f.el('etat').textContent = 'Écrivez quelques mots avant d\'envoyer.'; return; }
   f.el('envoyer').disabled = true; f.el('etat').style.color = '#5a4632'; f.el('etat').textContent = 'Envoi…';
   const retour = { type, texte, contexte: contexteRetour() };
-  let ok = false;
-  try {
-    const r = await fetch('/__retour/muraille', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(retour) });
-    ok = r.ok;
-  } catch (e) { ok = false; }
+  const ok = await expedierRetour(retour);
   if (ok) f.el('etat').textContent = type === 'bug' ? 'Merci ! Le bug est noté.' : 'Merci ! Votre idée est notée.';
   else {
     try { const l = JSON.parse(localStorage.getItem('muraille-retours') || '[]'); l.push({ ...retour, date: new Date().toISOString() }); localStorage.setItem('muraille-retours', JSON.stringify(l)); } catch (e) { /* ignoré */ }
-    f.el('etat').textContent = 'Serveur injoignable : votre message est gardé dans ce navigateur.';
+    f.el('etat').textContent = 'Pas de connexion : votre message est gardé et repartira plus tard.';
   }
   f.el('etat').style.color = ok ? '#2f6b2a' : '#8e1a20';
   setTimeout(fermerRetour, ok ? 1300 : 2600);

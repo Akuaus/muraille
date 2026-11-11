@@ -252,8 +252,12 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 - Dépôt public : https://github.com/Akuaus/muraille (branche `main`, commits signés avec l'adresse noreply GitHub).
 - Jouable en ligne (GitHub Pages, branche `main`, racine) : https://akuaus.github.io/muraille/
 - Mettre à jour : `git add -A`, `git commit -m "…"`, `git push` depuis `jeux/muraille/` (le site se met à jour en ~1 min).
-- `.gitignore` : `.claude/`, `RETOURS.md`. En ligne, il n'y a pas le serveur de l'atelier : les idées / bugs envoyés par
-  les joueurs restent dans LEUR navigateur (pas de réception). Le classement mondial (Supabase) fonctionne.
+- `.gitignore` : `.claude/`, `RETOURS.md`. Le classement mondial (Supabase) fonctionne en ligne.
+- **Idées et bugs en ligne** : table Supabase `retours` (`classement/retours.sql`, exécuté le 11/11/2026 : type idee/bug,
+  texte ≤ 4000, contexte jsonb {infos, date}). Les joueurs peuvent seulement ajouter (aucune lecture publique, vérifié).
+  `expedierRetour` envoie à la fois vers Supabase et vers le serveur de l'atelier (`RETOURS.md` en local) ; « envoyé »
+  si l'un des deux a reçu. Sinon gardé dans le navigateur (`muraille-retours`) et renvoyé au lancement suivant.
+  **Lire les messages** : Supabase → projet « Muraille project » → Table Editor → `retours`.
 
 ## Classement des joueurs
 - **Médaillon trophée** : en haut à droite de l'écran titre (« Classement ») et au centre des médaillons de fin de partie
