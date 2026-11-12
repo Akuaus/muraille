@@ -392,7 +392,14 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   muraille », ensō, sous-titre, croix, soleil et montagnes), les étiquettes des familles (icône + nom sur lavis gris),
   l'icône de chaque carte (détourée : papier de la carte et tout ce qui est clair retirés), et, à l'échelle 0,6, le
   cadre « Alliances actives » et le bouton « Partir au combat ».
-- **Une rangée par famille** (`dessinerRangeePrep`, `rectFamille`) : la carte choisie en large — icône, nom au pinceau,
+- **(12/11/2026) Les 4 cartes de chaque famille dans des cercles** (`dessinerCerclesPrep`, `cerclePrep`, rayon 46,
+  centres = colonnes de la maquette) : la choisie cerclée de rouge et cochée, les verrouillées estompées avec cadenas et
+  « record mm:ss ». Toucher un cercle = choisir la carte ; toucher la carte déjà choisie = ouvrir le menu de détail.
+  Survol (souris) : bulle avec l'effet et les alliances (« avec Forge (Soutien) »), coupée en lignes.
+- **Menu de détail** (`dessinerSelectionFamille`) : papier fondu comme les autres menus (plus de cadre), ✕ seul ; chaque
+  alliance montre l'**icône de l'autre carte et sa famille** (« avec Atelier · Siège ») pour savoir où la chercher.
+- **Réparation** : chaque utilisation coûte 1 encre de plus (`G.reparations`, remis à zéro à chaque partie).
+- (Avant le 12/11) Une rangée par famille (`dessinerRangeePrep`, `rectFamille`) : la carte choisie en large — icône, nom au pinceau,
   effet à la plume, alliances actives qui la concernent en rouge — et, à droite, « Changer ▸ » avec les autres cartes
   de la famille en petit (pâles si verrouillées). Toucher la rangée ouvre le **menu de sélection** de la famille
   (`dessinerSelectionFamille`, `selectionFamille`) : ses 4 cartes en grand (icône, nom, effet, talent, alliances

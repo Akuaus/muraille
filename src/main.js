@@ -309,12 +309,12 @@ const ACTIONS = {
     libelle: () => `1 cristal → ${valeurTroc()}`,
     court: () => G.bat.comptoir === 0 ? "Bâtir d'abord" : 'Aucun cristal',
     faire: () => { G.cristaux -= 1; G.or += valeurTroc(); } },
-  reparer: {
-    cout: () => Math.ceil(G.mur.max * 0.1 * 0.3),
+  reparer: { // chaque réparation coûte 1 encre de plus que la précédente (compteur remis à zéro à chaque partie)
+    cout: () => Math.ceil(G.mur.max * 0.1 * 0.3) + (G.reparations || 0),
     dispo: () => G.mur.pv < G.mur.max,
     libelle: () => 'Réparer +10 %',
     court: () => 'Mur intact',
-    faire: () => { G.mur.pv = Math.min(G.mur.max, G.mur.pv + G.mur.max * 0.1); } },
+    faire: () => { G.mur.pv = Math.min(G.mur.max, G.mur.pv + G.mur.max * 0.1); G.reparations = (G.reparations || 0) + 1; } },
   feu: {
     cout: () => FEU.cout,
     dispo: () => !G.feu && G.bat.forge >= 1,
@@ -4968,6 +4968,12 @@ function partirAuCombat() {
 // ---------------------------------------------------------------------
 let selectionFamille = null; // indice de la famille dont le menu de sélection est ouvert
 const rectFamille = f => ({ x: PREP_COLS[0], y: PREP_Y0 + f * PREP_RANG, w: W - 18 - PREP_COLS[0], h: PREP_CARTE });
+// les 4 cartes d'une famille, chacune dans un cercle (centres = colonnes de la maquette) ; nom en dessous
+const RAYON_CERCLE_PREP = 46;
+const cerclePrep = (f, j) => { const M = MAQUETTE_PREP; return { x: (M.colonnes[j] + M.largeurs[j] / 2) * M.s, y: PREP_Y0 + f * PREP_RANG + 50, r: RAYON_CERCLE_PREP }; };
+const dansCercle = (p, c, m = 4) => Math.hypot(p.x - c.x, p.y - c.y) < c.r + m;
+const familleDe = id => id === 'caserne' ? 'toujours présente' : (FAMILLES.find(fa => fa.cartes.includes(id)) || {}).nom || '';
+function iconeCartePrep(id) { return (maquettePrep && maquettePrep.icones[id]) || iconesCartes[id]; }
 const PANNEAU_SELECTION = { x: 34, y: 150, w: W - 68, h: 660 };
 const rectOption = j => ({ x: PANNEAU_SELECTION.x + 18 + (j % 2) * ((PANNEAU_SELECTION.w - 46) / 2 + 10), y: PANNEAU_SELECTION.y + 78 + Math.floor(j / 2) * 284, w: (PANNEAU_SELECTION.w - 46) / 2, h: 272 });
 const BTN_FERMER_SELECTION = { x: PANNEAU_SELECTION.x + PANNEAU_SELECTION.w - 50, y: PANNEAU_SELECTION.y + 12, w: 38, h: 38 };
@@ -4985,7 +4991,14 @@ function clicPreparation(p) {
   }
   if (dedansLarge(p, BTN_FERMER_PREP)) { ecran = 'accueil'; sousMenu = null; return; }
   if (dedans(p, BTN_PARTIR)) { partirAuCombat(); return; }
-  FAMILLES.forEach((fa, f) => { if (dedans(p, rectFamille(f))) selectionFamille = f; });
+  // un cercle : le choisir ; toucher la carte déjà choisie ouvre ses détails (effet, talent, alliances)
+  FAMILLES.forEach((fa, f) => fa.cartes.forEach((id, j) => {
+    const c = cerclePrep(f, j);
+    if (!dansCercle(p, c, 8)) return;
+    if (!debloque(id)) refus({ x: c.x - c.r, y: c.y - c.r, w: 2 * c.r, h: 2 * c.r });
+    else if (PLATEAU[fa.id] === id) selectionFamille = f;
+    else PLATEAU[fa.id] = id;
+  }));
 }
 function cadenas(x, y) {
   ctx.strokeStyle = ENCRE; ctx.fillStyle = ENCRE; ctx.lineWidth = 3;
@@ -5002,6 +5015,7 @@ function dessinerPreparation() {
   if (mq) ctx.drawImage(mq.haut, 0, 0);
   else { texte('Préparer la muraille', W / 2, 70, 34, ENCRE, 'center', 'bold'); texte('Choisissez vos constructions pour cette bataille.', W / 2, 130, 17, ENCRE, 'center', 'italic', SERIF); }
   const ouvert = selectionFamille !== null;
+  let bulleCarte = null;
   const choisiesPlateau = ['caserne', ...FAMILLES.map(fa => PLATEAU[fa.id])];
   FAMILLES.forEach((fa, fi) => {
     const r = rectFamille(fi);
@@ -5009,7 +5023,8 @@ function dessinerPreparation() {
     if (fi > 0) { ctx.beginPath(); ctx.moveTo(20, r.y - 14); ctx.lineTo(W - 16, r.y - 14); ctx.stroke(); }
     if (mq) ctx.drawImage(mq.familles[fi], 6, r.y - 2, mq.familles[fi].width, Math.min(mq.familles[fi].height, PREP_CARTE + 6));
     else texte(fa.nom, 78, r.y + PREP_CARTE / 2, 18, ENCRE, 'center', 'bold');
-    dessinerRangeePrep(fa, r, !ouvert && dedans(souris, r), choisiesPlateau);
+    const survolee = dessinerCerclesPrep(fa, fi, ouvert, choisiesPlateau);
+    if (survolee) bulleCarte = survolee;
   });
   // cadre « Alliances actives » : une alliance par cercle (les icônes de ses deux cartes)
   const RA = RECT_ALLIANCES_PREP, eb = M.echelleBas;
@@ -5035,6 +5050,7 @@ function dessinerPreparation() {
   else { ctx.drawImage(boutonRouge(BTN_PARTIR.w, BTN_PARTIR.h), BTN_PARTIR.x - 6, BTN_PARTIR.y - 4); texte('Partir au combat', W / 2, BTN_PARTIR.y + BTN_PARTIR.h / 2, 21, PAPIER, 'center', 'bold'); }
   // carte survolée : son effet et ses alliances, dans une bulle au-dessus du cadre des alliances
   if (bulle && !ouvert) dessinerBullePrep([{ t: bulle, gras: true }]);
+  else if (bulleCarte && !ouvert) dessinerBullePrep(bulleCarte);
   if (ouvert) dessinerSelectionFamille(choisies);
   if (refusAnim) {
     refusAnim.t += 1 / 60; const r = refusAnim.r;
@@ -5042,7 +5058,41 @@ function dessinerPreparation() {
     if (refusAnim.t > 0.45) refusAnim = null;
   }
 }
-// une rangée : la carte choisie de la famille, en large (icône, nom, effet, alliances), et « Changer ▸ »
+// une rangée : les 4 cartes de la famille dans des cercles ; la choisie est cerclée de rouge et cochée, les cartes
+// encore verrouillées sont estompées avec un cadenas. Renvoie la bulle d'information de la carte survolée.
+function dessinerCerclesPrep(fa, fi, ouvert, choisies) {
+  let bulle = null;
+  fa.cartes.forEach((id, j) => {
+    const c = cerclePrep(fi, j), b = batimentDe(id), ok = debloque(id), choisi = PLATEAU[fa.id] === id;
+    const survol = !ouvert && dansCercle(souris, c, 8), dy = survol && ok ? -2 : 0, cy = c.y + dy;
+    ctx.save();
+    ctx.fillStyle = 'rgba(40,30,20,0.12)'; ctx.beginPath(); ctx.arc(c.x + 2, cy + 3, c.r, 0, 7); ctx.fill();
+    ctx.fillStyle = choisi ? '#fbf3e3' : '#f3eadb'; ctx.beginPath(); ctx.arc(c.x, cy, c.r, 0, 7); ctx.fill();
+    ctx.lineWidth = choisi ? 4.5 : 2.5; ctx.strokeStyle = choisi ? ROUGE : survol ? '#3a3230' : '#9d9285'; ctx.stroke();
+    if (!ok) ctx.globalAlpha = 0.3;
+    const ic = iconeCartePrep(id), t = c.r * 1.42, e = Math.min(t / ic.width, t / ic.height);
+    ctx.drawImage(ic, c.x - ic.width * e / 2, cy - ic.height * e / 2, ic.width * e, ic.height * e);
+    ctx.restore();
+    if (!ok) { ctx.save(); ctx.translate(c.x, cy + 4); ctx.scale(0.8, 0.8); cadenas(0, 0); ctx.restore(); }
+    if (choisi) {
+      const bx = c.x + c.r * 0.72, by = cy - c.r * 0.72;
+      ctx.fillStyle = ROUGE; ctx.beginPath(); ctx.arc(bx, by, 11, 0, 7); ctx.fill();
+      ctx.strokeStyle = PARCHEMIN; ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(bx - 5, by); ctx.lineTo(bx - 1, by + 4); ctx.lineTo(bx + 5, by - 4); ctx.stroke();
+    }
+    texte(b.nom, c.x, c.y + c.r + 18, 15, choisi ? ROUGE : ok ? ENCRE : '#9d9285', 'center', 'bold', SANS, 132);
+    if (!ok) texte(`record ${formatTemps(DEBLOCAGE[id])}`, c.x, c.y + c.r + 34, 11, '#9d9285', 'center', 'italic', SERIF);
+    if (survol) {
+      const al = ALLIANCES.filter(a => a.cartes.includes(id)).map(a => { const autre = a.cartes.find(x => x !== id); return `${a.nom} avec ${batimentDe(autre).nom} (${familleDe(autre)})`; });
+      bulle = [{ t: `${b.nom} : ${b.resume}`, gras: true }];
+      if (!ok) bulle.push({ t: `Se débloque avec un record de ${formatTemps(DEBLOCAGE[id])}.` });
+      else if (al.length) bulle.push({ t: 'Alliances : ' + al.join(' · ') });
+      bulle.push({ t: choisi ? `${CLIQUEZ} à nouveau pour voir le détail.` : `${CLIQUEZ} pour la choisir.` });
+    }
+  });
+  return bulle;
+}
+// (ancienne rangée large, gardée pour référence) la carte choisie de la famille, en large, et « Changer ▸ »
 function dessinerRangeePrep(fa, r, survol, choisies) {
   const id = PLATEAU[fa.id], b = batimentDe(id), dy = survol ? -2 : 0, x = r.x, y = r.y + dy;
   ctx.save();
@@ -5069,20 +5119,17 @@ function dessinerRangeePrep(fa, r, survol, choisies) {
   });
 }
 // menu de sélection d'une famille : ses 4 cartes en détail, la carte choisie cochée
+let fondSelection = null;
 function dessinerSelectionFamille(choisies) {
-  const fa = FAMILLES[selectionFamille], P = PANNEAU_SELECTION;
-  ctx.fillStyle = 'rgba(27,23,25,0.45)'; ctx.fillRect(0, 0, W, H);
-  ctx.save();
-  ctx.fillStyle = '#f1e6d0'; ctx.fillRect(P.x, P.y, P.w, P.h);
-  const g = ctx.createRadialGradient(W / 2, P.y + P.h / 2, 120, W / 2, P.y + P.h / 2, 460); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(120,85,45,0.22)');
-  ctx.fillStyle = g; ctx.fillRect(P.x, P.y, P.w, P.h);
-  ctx.strokeStyle = ENCRE; ctx.lineWidth = 4; ctx.strokeRect(P.x, P.y, P.w, P.h);
-  ctx.globalAlpha = 0.45; ctx.lineWidth = 1; ctx.strokeRect(P.x + 7, P.y + 7, P.w - 14, P.h - 14);
-  ctx.restore();
+  const fa = FAMILLES[selectionFamille], P = PANNEAU_SELECTION, m = 34;
+  // même papier fondu que les autres menus (pas de cadre rectangulaire)
+  ctx.fillStyle = 'rgba(27,23,25,0.3)'; ctx.fillRect(0, 0, W, H);
+  if (!fondSelection) fondSelection = papierFondu(P.w + 2 * m, P.h + 2 * m, 56);
+  ctx.drawImage(fondSelection, P.x - m, P.y - m);
   texte(fa.nom, W / 2, P.y + 36, 30, ENCRE, 'center', 'bold');
   ctx.fillStyle = ROUGE; ctx.fillRect(W / 2 - 50, P.y + 56, 100, 3);
-  const bf = BTN_FERMER_SELECTION; ctx.strokeStyle = ENCRE; ctx.lineWidth = 3; ctx.strokeRect(bf.x, bf.y, bf.w, bf.h);
-  texte('✕', bf.x + bf.w / 2, bf.y + bf.h / 2 + 1, 22, ENCRE, 'center', 'bold');
+  const bf = BTN_FERMER_SELECTION, survolX = dedansLarge(souris, bf);
+  texte('✕', bf.x + bf.w / 2, bf.y + bf.h / 2 + 1, survolX ? 30 : 26, survolX ? ROUGE : ENCRE, 'center', 'bold');
   const autresChoisies = choisies.filter(c => c !== PLATEAU[fa.id]);
   fa.cartes.forEach((id, j) => {
     const r = rectOption(j), b = batimentDe(id), ok = debloque(id), choisi = PLATEAU[fa.id] === id, survol = ok && dedans(souris, r);
@@ -5097,12 +5144,18 @@ function dessinerSelectionFamille(choisies) {
     const cx = r.x + r.w / 2;
     texte(b.nom, cx, y + 96, 22, ENCRE, 'center', 'bold', SANS, r.w - 20);
     let yy = y + 122;
-    lignesDe(b.resume, r.w - 24, `italic 13px ${SERIF}`).slice(0, 3).forEach(l => { texte(l, cx, yy, 13, '#3a3230', 'center', 'italic', SERIF); yy += 16; });
+    lignesDe(b.resume, r.w - 24, `italic 13px ${SERIF}`).slice(0, 2).forEach(l => { texte(l, cx, yy, 13, '#3a3230', 'center', 'italic', SERIF); yy += 16; });
     if (TALENTS[id]) { texte(`Talent : ${TALENTS[id].nom}`, cx, yy + 6, 12.5, '#2c4268', 'center', 'bold', SERIF, r.w - 20); yy += 22; }
+    // alliances : le nom, puis l'icône de l'autre carte et sa famille (pour savoir où aller la chercher)
     for (const a of ALLIANCES.filter(a => a.cartes.includes(id)).slice(0, 3)) {
-      const autre = a.cartes.find(c => c !== id), active = autresChoisies.includes(autre);
-      texte(`${active ? '✓ ' : ''}${a.nom} (avec ${batimentDe(autre).nom})`, cx, yy + 4, 12, active ? ROUGE : '#6a5a48', 'center', active ? 'bold' : '', SERIF, r.w - 16);
-      yy += 15;
+      const autre = a.cartes.find(c => c !== id), active = autresChoisies.includes(autre), coul = active ? ROUGE : '#6a5a48';
+      texte(`${active ? '✓ ' : ''}${a.nom}`, cx, yy + 6, 12.5, coul, 'center', 'bold', SERIF, r.w - 16);
+      const lib = `avec ${batimentDe(autre).nom} · ${familleDe(autre)}`, ia = iconeCartePrep(autre), t = 20;
+      ctx.font = fonte('italic', 12, SERIF); const lw = Math.min(ctx.measureText(lib).width, r.w - 50), x0 = cx - (lw + t + 6) / 2;
+      ctx.save(); if (!debloque(autre)) ctx.globalAlpha = 0.4; const e = Math.min(t / ia.width, t / ia.height);
+      ctx.drawImage(ia, x0 + (t - ia.width * e) / 2, yy + 22 - ia.height * e / 2, ia.width * e, ia.height * e); ctx.restore();
+      texte(lib, x0 + t + 6, yy + 22, 12, coul, 'left', 'italic', SERIF, r.w - 50);
+      yy += 31;
     }
     if (!ok) {
       ctx.fillStyle = 'rgba(236,227,207,0.78)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(r.x, y, r.w, r.h, 8) : ctx.rect(r.x, y, r.w, r.h); ctx.fill();
@@ -5115,16 +5168,20 @@ function dessinerSelectionFamille(choisies) {
       ctx.beginPath(); ctx.moveTo(r.x + r.w - 21, y + 14); ctx.lineTo(r.x + r.w - 15, y + 20); ctx.lineTo(r.x + r.w - 7, y + 8); ctx.stroke();
     }
   });
-  texte('Touchez une carte pour la choisir', W / 2, P.y + P.h - 20, 14, '#7a6a55', 'center', 'italic', SERIF);
+  texte(`${CLIQUEZ} une carte pour la choisir`, W / 2, P.y + P.h - 20, 14, '#7a6a55', 'center', 'italic', SERIF);
 }
 // bulle d'information posée sur le cadre des alliances (lignes de texte à la plume)
-function dessinerBullePrep(lignes) {
-  const RA = RECT_ALLIANCES_PREP, n = Math.min(4, lignes.length), h = 14 + n * 16, y = RA.y + RA.h - h - 2;
+function dessinerBullePrep(entrees) {
+  // chaque entrée est coupée en lignes (au plus 6 lignes en tout)
+  const lignes = [];
+  for (const l of entrees) for (const t of lignesDe(l.t, W - 60, `${l.gras ? 'bold' : 'italic'} 12.5px ${SERIF}`)) lignes.push({ t, gras: l.gras });
+  lignes.length = Math.min(lignes.length, 6);
+  const RA = RECT_ALLIANCES_PREP, n = lignes.length, h = 14 + n * 16, y = RA.y + RA.h - h - 2;
   ctx.save();
   ctx.fillStyle = 'rgba(247,239,223,0.97)'; ctx.strokeStyle = ENCRE; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(16, y, W - 32, h, 8) : ctx.rect(16, y, W - 32, h); ctx.fill(); ctx.stroke();
   ctx.restore();
-  lignes.slice(0, 4).forEach((l, k) => texte(l.t, W / 2, y + 14 + k * 16, 12.5, l.gras ? ENCRE : '#6a5a48', 'center', l.gras ? 'bold' : 'italic', SERIF, W - 48));
+  lignes.forEach((l, k) => texte(l.t, W / 2, y + 14 + k * 16, 12.5, l.gras ? ENCRE : '#6a5a48', 'center', l.gras ? 'bold' : 'italic', SERIF, W - 48));
 }
 
 let bandeauFin = null;
