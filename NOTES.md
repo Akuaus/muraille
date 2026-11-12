@@ -396,6 +396,9 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   centres = colonnes de la maquette) : la choisie cerclée de rouge et cochée, les verrouillées estompées avec cadenas et
   « record mm:ss ». Toucher un cercle = choisir la carte ; toucher la carte déjà choisie = ouvrir le menu de détail.
   Survol (souris) : bulle avec l'effet et les alliances (« avec Forge (Soutien) »), coupée en lignes.
+  Fond des cercles = le lavis de l'étiquette « Économie » de la maquette, encre effacée (`fondLavisCercle` : chaque
+  pixel sombre prend la couleur médiane du lavis de sa ligne). Étiquettes de famille aux bords estompés
+  (`etiquetteFondue` : fondu irrégulier, 34 px en haut / bas, 14 px sur les côtés pour ne pas manger le nom).
 - **Menu de détail** (`dessinerSelectionFamille`) : papier fondu comme les autres menus (plus de cadre), ✕ seul ; chaque
   alliance montre l'**icône de l'autre carte et sa famille** (« avec Atelier · Siège ») pour savoir où la chercher.
 - **Réparation** : chaque utilisation coûte 1 encre de plus (`G.reparations`, remis à zéro à chaque partie).

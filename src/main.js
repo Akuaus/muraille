@@ -5021,7 +5021,7 @@ function dessinerPreparation() {
     const r = rectFamille(fi);
     ctx.strokeStyle = 'rgba(27,23,25,0.18)'; ctx.lineWidth = 1;                         // fine ligne entre familles
     if (fi > 0) { ctx.beginPath(); ctx.moveTo(20, r.y - 14); ctx.lineTo(W - 16, r.y - 14); ctx.stroke(); }
-    if (mq) ctx.drawImage(mq.familles[fi], 6, r.y - 2, mq.familles[fi].width, Math.min(mq.familles[fi].height, PREP_CARTE + 6));
+    if (mq) { const ef = etiquetteFondue(fi); ctx.drawImage(ef, 6, r.y - 2, ef.width, Math.min(ef.height, PREP_CARTE + 6)); }
     else texte(fa.nom, 78, r.y + PREP_CARTE / 2, 18, ENCRE, 'center', 'bold');
     const survolee = dessinerCerclesPrep(fa, fi, ouvert, choisiesPlateau);
     if (survolee) bulleCarte = survolee;
@@ -5060,6 +5060,53 @@ function dessinerPreparation() {
 }
 // une rangée : les 4 cartes de la famille dans des cercles ; la choisie est cerclée de rouge et cochée, les cartes
 // encore verrouillées sont estompées avec un cadenas. Renvoie la bulle d'information de la carte survolée.
+// Étiquettes de famille de la maquette (lavis gris) : bords estompés de façon irrégulière, comme les menus,
+// pour qu'on ne voie plus leur carré. Préparées une fois.
+const etiquettesFondues = [];
+function etiquetteFondue(fi) {
+  if (etiquettesFondues[fi]) return etiquettesFondues[fi];
+  const src = maquettePrep.familles[fi], w = src.width, h = src.height, c = creerCanvas(w, h), k = c.getContext('2d');
+  k.drawImage(src, 0, 0);
+  // fondu large en haut et en bas (lavis), plus étroit sur les côtés (le nom de la famille touche presque le bord)
+  const id = k.getImageData(0, 0, w, h), d = id.data, fh = 34, fl = 14;
+  const lisse = (dist, fd, b) => { const u = clamp((dist - fd * 0.35 * b) / (fd * 0.75), 0, 1); return u * u * (3 - 2 * u); };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = Math.min(x, w - 1 - x), dy = Math.min(y, h - 1 - y); if (dx >= fl && dy >= fh) continue;
+    const bruit = 0.5 + 0.28 * Math.sin(x * 0.11 + y * 0.07 + fi) + 0.22 * Math.sin(x * 0.03 - y * 0.15 + 1.7);
+    const p = (y * w + x) * 4; d[p + 3] = Math.round(d[p + 3] * Math.min(lisse(dx, fl, bruit), lisse(dy, fh, bruit)));
+  }
+  k.putImageData(id, 0, 0);
+  return (etiquettesFondues[fi] = c);
+}
+// Fond des cercles : l'étiquette « Économie » elle-même, dont on efface l'encre (icône et nom) : chaque pixel sombre
+// prend la couleur du lavis de sa ligne (médiane des pixels clairs). Il reste le coup de lavis gris, posé dans le rond.
+let lavisCercle = null;
+function fondLavisCercle(r) {
+  if (lavisCercle && lavisCercle.r === r) return lavisCercle.c;
+  const c = creerCanvas(2 * r, 2 * r), k = c.getContext('2d'), src = maquettePrep && maquettePrep.familles[0];
+  k.fillStyle = '#efe5d2'; k.fillRect(0, 0, 2 * r, 2 * r);
+  if (src) {
+    const w = src.width, h = src.height, net = creerCanvas(w, h), nk = net.getContext('2d');
+    nk.drawImage(src, 0, 0);
+    const id = nk.getImageData(0, 0, w, h), d = id.data, lum = p => (d[p] + d[p + 1] + d[p + 2]) / 3;
+    let ref = null;
+    for (let y = 0; y < h; y++) {
+      const clairs = [];
+      for (let x = 0; x < w; x++) { const p = (y * w + x) * 4; if (lum(p) >= 185 && d[p + 3] > 200) clairs.push(p); }
+      if (clairs.length > 8) { clairs.sort((a, b) => lum(a) - lum(b)); const m = clairs[clairs.length >> 1]; ref = [d[m], d[m + 1], d[m + 2]]; }
+      if (!ref) continue;
+      for (let x = 0; x < w; x++) {
+        const p = (y * w + x) * 4; if (lum(p) >= 185) continue;
+        const v = (Math.random() - 0.5) * 6; d[p] = ref[0] + v; d[p + 1] = ref[1] + v; d[p + 2] = ref[2] + v;
+      }
+    }
+    nk.putImageData(id, 0, 0);
+    const e = (2 * r) / Math.min(w, h) * 1.08; // couvre tout le rond
+    k.drawImage(net, r - w * e / 2, r - h * e / 2, w * e, h * e);
+  }
+  k.globalCompositeOperation = 'destination-in'; k.beginPath(); k.arc(r, r, r, 0, 7); k.fill();
+  if (src) lavisCercle = { r, c }; return c; // (pas mis en cache tant que la maquette n'est pas chargée)
+}
 function dessinerCerclesPrep(fa, fi, ouvert, choisies) {
   let bulle = null;
   fa.cartes.forEach((id, j) => {
@@ -5067,7 +5114,7 @@ function dessinerCerclesPrep(fa, fi, ouvert, choisies) {
     const survol = !ouvert && dansCercle(souris, c, 8), dy = survol && ok ? -2 : 0, cy = c.y + dy;
     ctx.save();
     ctx.fillStyle = 'rgba(40,30,20,0.12)'; ctx.beginPath(); ctx.arc(c.x + 2, cy + 3, c.r, 0, 7); ctx.fill();
-    ctx.fillStyle = choisi ? '#fbf3e3' : '#f3eadb'; ctx.beginPath(); ctx.arc(c.x, cy, c.r, 0, 7); ctx.fill();
+    ctx.drawImage(fondLavisCercle(c.r), c.x - c.r, cy - c.r); ctx.beginPath(); ctx.arc(c.x, cy, c.r, 0, 7);
     ctx.lineWidth = choisi ? 4.5 : 2.5; ctx.strokeStyle = choisi ? ROUGE : survol ? '#3a3230' : '#9d9285'; ctx.stroke();
     if (!ok) ctx.globalAlpha = 0.3;
     const ic = iconeCartePrep(id), t = c.r * 1.42, e = Math.min(t / ic.width, t / ic.height);
