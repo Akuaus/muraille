@@ -265,6 +265,9 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   (« Inscrire mon score », puis « Classement »). Fenêtre HTML (pinceau + plume) : en fin de partie, champ « Votre nom de
   guerrier » (16 lettres max, mémorisé : `muraille-pseudo`) + « Inscrire » ; puis le tableau des 20 meilleurs (rang,
   médailles or / argent / bronze, nom, vague, plateau, temps), votre ligne en rouge. Un score par partie.
+- **Inscription automatique (12/11/2026)** : à la chute de la muraille, le score est inscrit tout seul sous le pseudo
+  du profil (parties d'au moins 10 s) ; l'écran de fin affiche « Score inscrit au classement mondial (pseudo) ✓ »
+  (ou « gardé sur cet appareil » hors ligne), et le médaillon devient « Classement ».
 - **Style** : même papier fondu que le menu d'accueil et l'Héritage (`papierFondu`, généré à la taille réelle de la
   carte via un `ResizeObserver`, en fond CSS), sans cadre ; ✕ seul (rouge au survol) ; voile 0,38 (l'écran de fin
   derrière reste discret) ; hauteur minimale pour que la carte ne soit pas une bande étroite.

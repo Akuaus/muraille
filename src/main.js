@@ -2332,6 +2332,12 @@ function mettreAJour(dt) {
     G.piecesGagnees = piecesDePartie(G.t, G.kills); pieces += G.piecesGagnees; sauverPieces();
     profil.meilleur = Math.max(profil.meilleur || 0, G.t); sauverProfil();
     G.avatarsNouveaux = AVATARS.filter(a => avatarDebloque(a) && G.avatarsAvant && !G.avatarsAvant.has(a.id)).map(a => a.nom);
+    // le score est inscrit tout seul au classement, sous le pseudo du profil (parties d'au moins 10 s)
+    if (profil.pseudo && G.t >= 10) {
+      G.inscription = 'en cours';
+      const partie = G;
+      inscrireScore(profil.pseudo).then(ok => { partie.inscription = ok ? 'en ligne' : 'local'; }, () => { partie.inscription = 'local'; });
+    }
   }
 }
 
@@ -5505,6 +5511,8 @@ function dessinerFin() {
   texte(`${CLIQUEZ} pour préparer une nouvelle défense`, W / 2, 582, 21, ENCRE, 'center', 'bold');
   medaillonRetour(BTN_IDEE_FIN, 'idee', 'Une idée ?'); medaillonRetour(BTN_BUG_FIN, 'bug', 'Un bug ?');
   medaillonRetour(BTN_CLASSEMENT_FIN, 'classement', G.scoreInscrit ? 'Classement' : 'Inscrire mon score');
+  if (G.inscription) texte({ 'en cours': 'Inscription au classement…', 'en ligne': `Score inscrit au classement mondial (${profil.pseudo}) ✓`,
+    local: 'Score gardé sur cet appareil (classement en ligne injoignable)' }[G.inscription], W / 2, 614, 14, G.inscription === 'en ligne' ? '#2f6b2a' : '#7a6a55', 'center', 'italic bold', SERIF, W - 40);
   if (heritageOuvert) dessinerHeritage();
 }
 
