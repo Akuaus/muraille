@@ -65,6 +65,15 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   En ouvrant `index.html` directement (file://), le navigateur peut refuser les polices : polices de secours.
 
 ## Sprites dessinés (assets/)
+- **Archers impériaux (12/11/2026)** : quand le **Temple** est choisi et au **niveau max (5)**, les archers prennent
+  l'apparence impériale (casque à plumet rouge, tunique blanche) et leurs flèches font **+50 %** de dégâts
+  (`archersImperiaux`, `IMPERIAL.bonus` ; bannière « Archers impériaux » ; annoncé dans la fiche du Temple dès le
+  niveau 4). Planches du joueur `assets/archer-imperial-droite.webp` / `-gauche.webp` (8 × 3 images sur fond magenta,
+  originaux dans `sources/`), détourées au chargement (`preparerImperial` : magenta → transparent, bords → encre ;
+  pieds et hauteur mesurés image par image). Même orientation que l'archer de base : planche « droite » si la cible est
+  à droite, « gauche » sinon ; ligne 0 image 7 = visée, ligne 1 = tir (l'image où la flèche part, repérée
+  automatiquement, tombe au moment du lâcher), ligne 2 = repos (aller-retour). Ses planches tirant à l'horizontale, le
+  haut du corps se penche vers la cible (un tiers de l'angle de visée de l'archer de base, pivot à la taille).
 - `assets/sources/archer-planche.webp` : planche d'origine (fond magenta, 8 × 4)
 - `assets/archer.png` : version détourée et réduite (cases de 112 px, fond transparent), utilisée par le jeu
   - ligne 0 : visée à droite (45° → vertical) · ligne 1 : tir à droite (lâcher en image 3)

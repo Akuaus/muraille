@@ -216,7 +216,7 @@ const TOUS_BATIMENTS = [
     info: l => `Butin des monstres +${l * 12} %` + (l < 5 ? `  →  +${(l + 1) * 12} %` : '') },
   { id: 'temple', famille: 'soutien', nom: 'Temple', max: 5, resume: 'Aura qui ralentit ; archers plus vifs.',
     cout: l => Math.round(90 * Math.pow(1.9, l)),
-    info: l => `Aura : ralenti −${l * 10} %, dégâts subis +${l * 8} % ; cadence +${l * 10} %` + (l < 5 ? `  →  niv. ${l + 1}` : '') },
+    info: l => `Aura : ralenti −${l * 10} %, dégâts subis +${l * 8} % ; cadence +${l * 10} %` + (l < 5 ? `  →  niv. ${l + 1}${l === 4 ? ' : archers impériaux (flèches +50 %)' : ''}` : ' · archers impériaux (flèches +50 %)') },
   { id: 'alchimiste', famille: 'soutien', nom: 'Alchimiste', max: 5, resume: 'Flèches au poison cumulable.',
     cout: l => Math.round(90 * Math.pow(1.9, l)),
     info: l => `Poison : ${l ? 3 + l : 0} doses max, ×${(1 + 0.4 * Math.max(0, l - 1)).toFixed(1)}` + (l < 5 ? `  →  ${4 + l} doses, ×${(1 + 0.4 * l).toFixed(1)}` : '') },
@@ -1111,6 +1111,68 @@ const spritesArcher = [0, 1, 2].map(v => [creerArcher(v, false), creerArcher(v, 
 // Tant qu'elle n'est pas chargée (ou si elle manque), les archers procéduraux prennent le relais.
 const PLANCHE = { cell: 112, echelle: 0.6, pieds: [[56, 106], [56, 103], [59, 101], [59, 101]] };
 const ORDRE_TIR_GAUCHE = [7, 1, 2, 0, 3, 4, 5, 6];
+// ---------------------------------------------------------------------
+//  Archers impériaux : quand le Temple est choisi et au niveau maximum, les archers changent d'apparence (casque à
+//  plumet rouge, tunique blanche) et leurs flèches font +50 % de dégâts. Deux planches du joueur, 8 × 3 images sur fond
+//  magenta : assets/archer-imperial-droite.webp (tourné vers la droite) et -gauche.webp (vers la gauche).
+//  Ligne 0 : on lève l'arc (visée) · ligne 1 : tir (la flèche part sur une image) · ligne 2 : on rabaisse (attente).
+//  Même orientation que l'archer de base : planche « droite » quand la cible est à droite, « gauche » sinon.
+// ---------------------------------------------------------------------
+const IMPERIAL = { colonnes: 8, rangees: 3, hauteur: 40, bonus: 1.5, ips: 6,
+  src: { d: 'assets/archer-imperial-droite.webp', g: 'assets/archer-imperial-gauche.webp' } };
+const planchesImperiales = {};
+for (const cote of ['d', 'g']) { const img = new Image(); img.onload = () => { try { planchesImperiales[cote] = preparerImperial(img); } catch (e) { /* archer de base */ } }; img.src = IMPERIAL.src[cote]; }
+function preparerImperial(img) {
+  const w = img.width, h = img.height, c = creerCanvas(w, h), k = c.getContext('2d');
+  k.drawImage(img, 0, 0);
+  const id = k.getImageData(0, 0, w, h), d = id.data;
+  // fond magenta → transparent ; les bords à demi transparents deviennent de l'encre (le contour du dessin)
+  for (let p = 0; p < d.length; p += 4) {
+    const m = Math.min(d[p], d[p + 2]) - d[p + 1], a = clamp((150 - m) / 90, 0, 1);
+    if (a < 1) { d[p] = 27; d[p + 1] = 23; d[p + 2] = 25; }
+    d[p + 3] = Math.round(255 * a * a);
+  }
+  k.putImageData(id, 0, 0);
+  const cw = w / IMPERIAL.colonnes, ch = h / IMPERIAL.rangees, cases = [];
+  for (let r = 0; r < IMPERIAL.rangees; r++) for (let q = 0; q < IMPERIAL.colonnes; q++) {
+    // dans chaque case : hauteur du dessin, et position des pieds (bas du dessin, milieu des pixels du bas)
+    const x0 = Math.round(q * cw), y0 = Math.round(r * ch), x1 = Math.round((q + 1) * cw), y1 = Math.round((r + 1) * ch);
+    let haut = -1, bas = -1;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x += 2) if (d[(y * w + x) * 4 + 3] > 128) { if (haut < 0) haut = y; bas = y; break; }
+    let sx = 0, n = 0, gauche = x1, droite = x0;
+    for (let y = Math.max(y0, bas - 10); y <= bas; y++) for (let x = x0; x < x1; x++) if (d[(y * w + x) * 4 + 3] > 128) { sx += x; n++; }
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (d[(y * w + x) * 4 + 3] > 128) { gauche = Math.min(gauche, x); droite = Math.max(droite, x); }
+    cases.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0, pieds: [n ? sx / n : (x0 + x1) / 2, bas < 0 ? y1 : bas], taille: bas - haut, large: droite - gauche });
+  }
+  // image du tir où la flèche est partie (la plus large de la ligne 1) : elle doit tomber au moment du lâcher
+  const tir = cases.slice(8, 16), lacher = tir.indexOf(tir.reduce((a, b) => (b.large > a.large ? b : a)));
+  const taille = cases.slice(0, 8).reduce((m, c) => m + c.taille, 0) / 8;
+  return { c, cases, lacher, echelle: IMPERIAL.hauteur / taille };
+}
+const archersImperiaux = () => !!(G && G.bat.temple >= batimentDe('temple').max);
+function dessinerArcherImperial(a, i, p) {
+  const P = planchesImperiales[a.dir < 0 ? 'g' : 'd'];
+  let n;
+  if (a.anim >= 0) { // tir : 8 images, la flèche part à l'image du lâcher (comme pour l'archer de base)
+    const f = Math.min(7, Math.floor(a.anim / TIR_DUREE * 8)), dec = P.lacher - Math.round(TIR_LACHER * 8);
+    n = 8 + clamp(f + dec, 0, 7);
+  } else if (a.attente || !G.ennemis.length) { // repos : on rabaisse puis relève l'arc doucement (aller-retour)
+    const t = Math.floor(G.t * IMPERIAL.ips + i * 2.7) % 14; n = 16 + (t < 8 ? t : 14 - t);
+  } else n = 7; // visée : l'arc levé
+  const C = P.cases[n], s = P.echelle, ox = p.x - (C.pieds[0] - C.x) * s, oy = p.y + 2 - (C.pieds[1] - C.y) * s;
+  const dessin = () => ctx.drawImage(P.c, C.x, C.y, C.w, C.h, ox, oy, C.w * s, C.h * s);
+  if (n >= 16) { dessin(); return; } // au repos : l'arc baissé, rien à orienter
+  // Même orientation que l'archer de base (tourné vers sa cible, à droite ou à gauche). Ses planches tirent à
+  // l'horizontale : le haut du corps (buste, bras, arc) se penche vers la cible, d'autant plus qu'elle est haute
+  // (a.vise, comme l'archer de base) ; les jambes restent plantées sur la muraille.
+  // (penché vers l'arrière d'un tiers de l'angle de visée : au-delà, la pose se tord)
+  const angle = (35 + a.vise / 7 * 55) * 0.36 * Math.PI / 180, taille = p.y + 2 - C.taille * 0.45 * s;
+  ctx.save(); ctx.beginPath(); ctx.rect(ox - 40, taille, C.w * s + 80, H); ctx.clip(); dessin(); ctx.restore();
+  ctx.save();
+  ctx.translate(p.x, taille); ctx.rotate(a.dir < 0 ? angle : -angle); ctx.translate(-p.x, -taille);
+  ctx.beginPath(); ctx.rect(ox - 60, oy - 60, C.w * s + 120, taille - oy + 62); ctx.clip(); // un peu sous la taille : pas de jour
+  dessin(); ctx.restore();
+}
 const TIR_DUREE = 0.45, TIR_LACHER = 3 / 8;
 let plancheArcher = null;
 (function () {
@@ -2185,7 +2247,7 @@ function mettreAJour(dt) {
   const tirer = (p, cible, seconde = false) => {
     const dx = cible.x - p.x, dy = centreY(cible) - p.y, d = Math.hypot(dx, dy) || 1, ec = seconde ? 7 : 0;
     G.fleches.push({ x: p.x + Math.sign(dx) * 10 + ec, y: p.y - 30 - ec, vx: dx / d * 700, vy: dy / d * 700, cible,
-      degats: ARCHER.degats * md * (1 + 0.1 * nv('pointes')), vie: 1.2, feu: G.feu });
+      degats: ARCHER.degats * md * (1 + 0.1 * nv('pointes')) * (archersImperiaux() ? IMPERIAL.bonus : 1), vie: 1.2, feu: G.feu });
     if (!seconde) Bruitages.jouer(G.feu ? 'flecheFeu' : 'fleche', p.x, 0.5);
   };
   G.archers.forEach((a, i) => {
@@ -2613,6 +2675,7 @@ function ameliorer(i) {
   if (b.id === 'poudrerie' && l === 0) banniere('La poudrerie est prête');
   if (b.id === 'pagode' && l === 0) banniere("Le dragon d'encre s'éveille", ROUGE);
   if (b.id === 'temple' && l === 0) banniere('Le gong du temple résonne');
+  if (b.id === 'temple' && G.bat.temple >= b.max) banniere('Archers impériaux : flèches +50 %', ROUGE);
   if (b.id === 'alchimiste' && l === 0) banniere('Flèches empoisonnées');
   if (b.id === 'fosse') { G.mur.max += 100; G.mur.pv += 100; }
   if (b.id === 'sanctuaire') { G.mur.max += 150; G.mur.pv += 150; if (l === 0) banniere('Les lanternes sont allumées'); }
@@ -3659,6 +3722,7 @@ function dessinerFaucons() {
 }
 function dessinerArcher(a, i) {
   const p = posteArcher(i);
+  if (archersImperiaux() && planchesImperiales.d && planchesImperiales.g) { dessinerArcherImperial(a, i, p); return; }
   if (!plancheArcher) { ctx.drawImage(spritesArcher[i % 3][a.tir > 0 ? 1 : 0], p.x - 18, p.y - 42); return; }
   if (a.anim < 0 && (a.attente || !G.ennemis.length) && plancheAttente) {
     // au repos : boucle d'attente, décalée d'un archer à l'autre ; tournée vers le dernier côté visé
