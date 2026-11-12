@@ -342,7 +342,8 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   parties, hors pause), parties lancées, jours différents où l'on a ouvert le jeu, meilleure partie.
 - **Classement** : l'avatar du profil part avec chaque score (`inscrireScore`) et s'affiche en portrait à côté du
   pseudo (`imageAvatarClassement` ; absent → Archer). Base : `classement/avatar.sql` (colonne `avatar` + vue
-  `classement` qui la renvoie). Le jeu marche avec ou sans cette colonne (lecture et envoi réessayés sans l'avatar).
+  `classement` qui la renvoie), **exécuté le 12/11/2026** et vérifié : un score avec avatar revient avec son portrait,
+  un avatar invalide est refusé (400) ; score de test effacé ensuite. Le jeu marche aussi sans cette colonne.
 
 ## Tutoriel (premières parties)
 - Conseils du maître d'armes (`TUTO`, `majTuto` / `dessinerTuto` / `clicTuto`) : chacun apparaît une seule fois, au moment
