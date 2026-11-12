@@ -328,6 +328,20 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   survol) ; bandes alternées en lavis aux extrémités estompées.
 - Remarque : ces bonus rendent le classement moins équitable entre anciens et nouveaux joueurs.
 
+## Profil : pseudo et avatars (12/11/2026)
+- Avant la première partie, « Jouer » ouvre la fenêtre **Votre profil** (`ouvrirProfil(true)`, « Valider et jouer ») :
+  pseudo (16 lettres, aussi utilisé pour le classement : `muraille-pseudo`) et choix d'un avatar. Ensuite accessible par
+  le **badge** en haut à gauche de l'accueil (`BADGE_PROFIL`, portrait + pseudo).
+- 14 avatars (`AVATARS`) : portraits ronds tirés des dessins du jeu (`premierDessin` détoure le premier dessin de chaque
+  planche ; dragon = `imagesDragon` ; temple, pagode, faucon = icônes de cartes), sur le lavis des cercles.
+  Libres : Archer, Gobelin. À débloquer : Corbeau (2 jours), Orc (tenir 5 min), Rôdeur (30 min de jeu au total),
+  Samouraï (5 parties), Porte-bouclier (10 min), Faucon (1 h au total), Troll (15 min), Temple (7 jours), Chef de guerre
+  (20 min), Baliste (25 parties), Dragon (30 min), Pagode (5 h au total). Chaque verrouillé montre sa condition et la
+  progression ; « Nouvel avatar débloqué : … » en fin de partie.
+- Statistiques (`profil`, localStorage `muraille-profil`) : pseudo, avatar, temps de jeu total (compté pendant les
+  parties, hors pause), parties lancées, jours différents où l'on a ouvert le jeu, meilleure partie.
+- Pas encore envoyé au classement en ligne (la table `scores` n'a pas de colonne avatar).
+
 ## Tutoriel (premières parties)
 - Conseils du maître d'armes (`TUTO`, `majTuto` / `dessinerTuto` / `clicTuto`) : chacun apparaît une seule fois, au moment
   où il devient utile ; le jeu se fige, la zone concernée est éclairée (voile percé + cadre rouge qui pulse), bulle de

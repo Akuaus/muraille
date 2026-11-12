@@ -2330,6 +2330,8 @@ function mettreAJour(dt) {
     if (G.t > record) { record = G.t; G.nouveauRecord = true; try { localStorage.setItem('muraille-record', String(record)); } catch (e) { /* ignoré */ } }
     G.sceauxGagnes = Math.floor(G.t / 60) + (G.nouveauRecord ? 5 : 0); sceaux += G.sceauxGagnes; sauverHeritage();
     G.piecesGagnees = piecesDePartie(G.t, G.kills); pieces += G.piecesGagnees; sauverPieces();
+    profil.meilleur = Math.max(profil.meilleur || 0, G.t); sauverProfil();
+    G.avatarsNouveaux = AVATARS.filter(a => avatarDebloque(a) && G.avatarsAvant && !G.avatarsAvant.has(a.id)).map(a => a.nom);
   }
 }
 
@@ -2524,6 +2526,7 @@ const Bruitages = {
 
 function lancerPartie() {
   nouvellePartie(); ecran = 'jeu'; Musique.demarrer(); Bruitages.initialiser();
+  profil.parties++; sauverProfil(); G.avatarsAvant = new Set(AVATARS.filter(avatarDebloque).map(a => a.id));
   const al = ALLIANCES.filter(a => G.alliances.has(a.id));
   if (al.length === 1) banniere(`Alliance : ${al[0].nom}`, ROUGE);
   else if (al.length > 1) banniere(`${al.length} alliances actives`, ROUGE);
@@ -2735,13 +2738,13 @@ function apresGeste(ev) {
 }
 addEventListener('pointerup', apresGeste);
 addEventListener('keydown', ev => {
-  if (retourOuvert || classementOuvert) return; // on écrit (retour, pseudo) : les touches ne pilotent plus le jeu
+  if (retourOuvert || classementOuvert || profilOuvert) return; // on écrit (retour, pseudo) : les touches ne pilotent plus le jeu
   if (ecran === 'titre') { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); ecran = 'accueil'; } return; }
   if (ecran === 'accueil') {
     if (heritageOuvert) { if (ev.key === 'Escape' || ev.key === 'Enter' || ev.key === ' ') fermerHeritage(); return; }
     if (ev.key === 'Escape') { if (!retourSousMenu()) ecran = 'titre'; return; }
     if (sousMenu === 'commandes' && (ev.key === ' ' || ev.key === 'Enter')) { sousMenu = 'options'; return; }
-    if (!sousMenu && (ev.key === ' ' || ev.key === 'Enter')) { ev.preventDefault(); ecran = 'preparation'; }
+    if (!sousMenu && (ev.key === ' ' || ev.key === 'Enter')) { ev.preventDefault(); allerPreparer(); }
     else if (ev.key.toLowerCase() === 'h' || ev.key === '?') sousMenu = 'commandes';
     return;
   }
@@ -4876,6 +4879,179 @@ function dessinerMenuImage() {
     texte(String(sceaux), x, y + 1, sceaux > 99 ? 10 : 12, PAPIER, 'center', 'bold');
   }
 }
+// =====================================================================
+//  PROFIL : pseudo + avatar, choisis avant la première partie (fenêtre « Votre profil », aussi depuis le badge en haut
+//  à gauche de l'accueil). Les avatars sont des portraits tirés des dessins du jeu ; certains se débloquent avec le
+//  temps de jeu total, la meilleure partie, le nombre de parties ou de jours où l'on a joué.
+//  Mémorisé : 'muraille-profil' { pseudo, avatar, tempsTotal (s), parties, jours, dernierJour } ; le pseudo sert
+//  aussi au classement ('muraille-pseudo').
+// =====================================================================
+const AVATARS = [
+  { id: 'archer',    nom: 'Archer',          src: 'assets/archer-attente.png' },
+  { id: 'gobelin',   nom: 'Gobelin',         src: 'assets/gobelin.png' },
+  { id: 'corbeau',   nom: 'Corbeau',         src: 'assets/corbeau-droite.png', jours: 2 },
+  { id: 'orc',       nom: 'Orc',             src: 'assets/orc.png',            meilleur: 5 * 60 },
+  { id: 'rodeur',    nom: 'Rôdeur',          src: 'assets/rodeur.png',         total: 30 * 60 },
+  { id: 'samourai',  nom: 'Samouraï',        src: 'assets/samourai-droite.png', parties: 5 },
+  { id: 'bouclier',  nom: 'Porte-bouclier',  src: 'assets/bouclier.png',       meilleur: 10 * 60 },
+  { id: 'faucon',    nom: 'Faucon',          icone: 'fauconnerie',             total: 60 * 60 },
+  { id: 'troll',     nom: 'Troll',           src: 'assets/troll.png',          meilleur: 15 * 60 },
+  { id: 'temple',    nom: 'Temple',          icone: 'temple',                  jours: 7 },
+  { id: 'chef',      nom: 'Chef de guerre',  src: 'assets/chef.png',           meilleur: 20 * 60 },
+  { id: 'baliste',   nom: 'Baliste',         src: 'assets/baliste.png',        parties: 25 },
+  { id: 'dragon',    nom: 'Dragon',          dragon: true,                     meilleur: 30 * 60 },
+  { id: 'pagode',    nom: 'Pagode',          icone: 'pagode',                  total: 5 * 3600 },
+];
+const jourDuJour = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+let profil = Object.assign({ pseudo: '', avatar: 'archer', tempsTotal: 0, parties: 0, jours: 0, dernierJour: '' }, lireLocal('muraille-profil', {}));
+if (!profil.pseudo) profil.pseudo = nettoyerPseudo(lireLocal('muraille-pseudo', ''));
+if (profil.dernierJour !== jourDuJour()) { profil.dernierJour = jourDuJour(); profil.jours++; }
+function sauverProfil() { const { pseudo, avatar, tempsTotal, parties, jours, dernierJour, meilleur } = profil; ecrireLocal('muraille-profil', { pseudo, avatar, tempsTotal: Math.round(tempsTotal), parties, jours, dernierJour, meilleur: Math.round(meilleur || 0) }); }
+sauverProfil();
+const meilleurePartie = () => Math.max(record || 0, profil.meilleur || 0);
+// condition de déblocage d'un avatar : [fait, objectif, libellé]
+function conditionAvatar(a) {
+  if (a.jours) return [profil.jours, a.jours, `jouer ${a.jours} jours différents`];
+  if (a.meilleur) return [meilleurePartie(), a.meilleur, `tenir ${formatTemps(a.meilleur)} en une partie`];
+  if (a.total) return [profil.tempsTotal, a.total, `${a.total >= 3600 ? a.total / 3600 + ' h' : a.total / 60 + ' min'} de jeu au total`];
+  if (a.parties) return [profil.parties, a.parties, `jouer ${a.parties} parties`];
+  return null;
+}
+const avatarDebloque = a => { const c = conditionAvatar(a); return !c || c[0] >= c[1]; };
+const avatarDe = id => AVATARS.find(a => a.id === id) || AVATARS[0];
+const dureeLisible = s => s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}` : `${Math.floor(s / 60)} min`;
+
+// --- portraits : la première image de chaque planche, détourée automatiquement (premier dessin en haut à gauche)
+const imagesAvatars = {};
+for (const a of AVATARS) if (a.src) { const img = new Image(); img.onload = () => { try { imagesAvatars[a.id] = premierDessin(img); } catch (e) { /* ignoré */ } }; img.src = a.src; }
+function premierDessin(img) {
+  const w = img.width, h = img.height, c = creerCanvas(w, h), k = c.getContext('2d');
+  k.drawImage(img, 0, 0);
+  const d = k.getImageData(0, 0, w, h).data, plein = (x, y) => d[(y * w + x) * 4 + 3] > 60;
+  const ligneVide = (y, xa, xb) => { for (let x = xa; x <= xb; x += 2) if (plein(x, y)) return false; return true; };
+  const colVide = (x, ya, yb) => { for (let y = ya; y <= yb; y += 2) if (plein(x, y)) return false; return true; };
+  // première bande de lignes non vide (assez haute), puis premier bloc de colonnes (assez large) dans cette bande
+  let y0 = 0, y1 = h - 1;
+  for (let y = 0, debut = -1; y < h; y++) {
+    const vide = ligneVide(y, 0, w - 1);
+    if (!vide && debut < 0) debut = y;
+    if ((vide || y === h - 1) && debut >= 0) { if (y - debut > 20) { y0 = debut; y1 = y; break; } debut = -1; }
+  }
+  let x0 = 0, x1 = w - 1;
+  for (let x = 0, debut = -1; x < w; x++) {
+    const vide = colVide(x, y0, y1);
+    if (!vide && debut < 0) debut = x;
+    if ((vide || x === w - 1) && debut >= 0) { if (x - debut > 12) { x0 = debut; x1 = x; break; } debut = -1; }
+  }
+  if (x1 - x0 > (y1 - y0) * 1.8) x1 = x0 + Math.round((y1 - y0) * 1.2); // dessins collés : on garde le premier
+  // resserrer en hauteur sur ce dessin
+  while (y0 < y1 && ligneVide(y0, x0, x1)) y0++;
+  while (y1 > y0 && ligneVide(y1, x0, x1)) y1--;
+  const out = creerCanvas(x1 - x0 + 1, y1 - y0 + 1);
+  out.getContext('2d').drawImage(c, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0, 0, x1 - x0 + 1, y1 - y0 + 1);
+  return out;
+}
+function dessinAvatar(a) {
+  if (a.dragon) { const d = imagesDragon && imagesDragon[0]; return d && (d.img || d); }
+  if (a.icone) return maquettePrep && maquettePrep.icones[a.icone];
+  return imagesAvatars[a.id];
+}
+// portrait rond : lavis du papier, le dessin au centre, anneau d'encre (gris si verrouillé)
+function portraitAvatar(a, taille, verrou) {
+  const c = creerCanvas(taille, taille), k = c.getContext('2d'), r = taille / 2;
+  k.drawImage(fondLavisCercle(46), 0, 0, taille, taille);
+  const im = dessinAvatar(a);
+  if (im) {
+    const e = Math.min(taille * 0.74 / im.width, taille * 0.74 / im.height);
+    k.save(); k.beginPath(); k.arc(r, r, r - 2, 0, 7); k.clip();
+    if (verrou) k.globalAlpha = 0.28;
+    k.drawImage(im, r - im.width * e / 2, r - im.height * e / 2 + taille * 0.02, im.width * e, im.height * e);
+    k.restore();
+  } else { k.fillStyle = ENCRE; k.font = fonte('bold', taille * 0.4, SANS); k.textAlign = 'center'; k.textBaseline = 'middle'; k.fillText(a.nom[0], r, r); }
+  k.lineWidth = Math.max(2, taille * 0.05); k.strokeStyle = verrou ? '#9d9285' : ENCRE; k.beginPath(); k.arc(r, r, r - k.lineWidth / 2, 0, 7); k.stroke();
+  if (verrou) { k.save(); k.translate(r, r + 4); k.scale(taille / 110, taille / 110); const sv = ctx; k.strokeStyle = ENCRE; k.fillStyle = ENCRE; k.lineWidth = 3;
+    k.beginPath(); k.arc(0, -8, 8, Math.PI, 0); k.stroke(); k.fillRect(-12, -8, 24, 18); k.fillStyle = PARCHEMIN; k.beginPath(); k.arc(0, 0, 3, 0, 7); k.fill(); k.restore(); }
+  return c;
+}
+
+// --- badge en haut à gauche de l'accueil
+const BADGE_PROFIL = { x: 12, y: 12, w: 220, h: 64 };
+function dessinerBadgeProfil() {
+  const B = BADGE_PROFIL, survol = dedans(souris, B), a = avatarDe(profil.avatar);
+  ctx.save(); ctx.fillStyle = survol ? 'rgba(241,232,216,0.95)' : 'rgba(241,232,216,0.78)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(B.x, B.y, B.w, B.h, 32) : ctx.rect(B.x, B.y, B.w, B.h); ctx.fill();
+  if (survol) { ctx.strokeStyle = ROUGE; ctx.lineWidth = 2; ctx.stroke(); }
+  ctx.restore();
+  ctx.drawImage(portraitAvatar(a, 56, false), B.x + 4, B.y + 4);
+  texte(profil.pseudo || 'Créer mon profil', B.x + 70, B.y + 26, 18, profil.pseudo ? ENCRE : ROUGE, 'left', 'bold', SANS, B.w - 80);
+  texte(profil.pseudo ? 'Profil et avatars' : 'pseudo et avatar', B.x + 70, B.y + 46, 12, '#7a6a55', 'left', 'italic', SERIF);
+}
+
+// --- fenêtre « Votre profil » (HTML, comme le classement : le clavier du téléphone s'ouvre pour le pseudo)
+let profilOuvert = false, fenetreProfil = null, apresProfil = null;
+function ouvrirProfil(puisJouer) {
+  apresProfil = puisJouer ? () => { ecran = 'preparation'; } : null;
+  const f = document.createElement('div');
+  f.style.cssText = 'position:fixed;inset:0;background:rgba(27,23,25,.38);display:flex;justify-content:center;align-items:flex-start;padding-top:3vh;z-index:10';
+  f.innerHTML = `<div data-p="carte" style="position:relative;width:min(98vw,560px);background:center/100% 100% no-repeat;padding:30px 36px 40px;box-sizing:border-box;color:#1b1719;font-family:Plume,Georgia,serif">
+    <div style="max-height:calc(90vh - 70px);overflow:auto;scrollbar-width:none">
+    <button data-p="fermer" aria-label="Fermer" style="position:absolute;top:22px;right:30px;width:38px;height:38px;border:0;background:transparent;font:26px Pinceau,sans-serif;color:#1b1719;cursor:pointer;line-height:1">✕</button>
+    <div style="font:clamp(24px,6vw,34px) Pinceau,sans-serif;text-align:center;margin:0 40px">Votre profil</div>
+    <div style="height:4px;width:40%;margin:4px auto 12px;background:#c0232b;border-radius:3px"></div>
+    <div style="display:flex;align-items:center;gap:14px;justify-content:center;flex-wrap:wrap">
+      <img data-p="choisi" style="width:84px;height:84px">
+      <div><div style="font-size:clamp(15px,3.6vw,18px);color:#5a4632">Votre nom de guerrier</div>
+      <input data-p="pseudo" maxlength="16" placeholder="Pseudo" style="font:clamp(18px,4.4vw,23px) Plume,Georgia,serif;padding:6px 10px;border:3px solid #1b1719;border-radius:8px;background:#fbf4e8;color:#1b1719;width:min(60vw,230px)"></div>
+    </div>
+    <div data-p="stats" style="text-align:center;font-size:clamp(13px,3.2vw,16px);color:#5a4632;margin:10px 0 6px"></div>
+    <div style="font:clamp(17px,4vw,21px) Pinceau,sans-serif;text-align:center;margin:8px 0 6px">Avatars</div>
+    <div data-p="grille" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px 4px"></div>
+    <div data-p="etat" style="text-align:center;color:#8e1a20;min-height:20px;margin-top:8px;font-size:clamp(14px,3.4vw,17px)"></div>
+    <div style="text-align:center;margin-top:6px"><button data-p="valider" style="font:clamp(17px,4vw,22px) Pinceau,sans-serif;padding:10px 26px;border:0;background:#c0232b;color:#f3e4cf;cursor:pointer;border-radius:4px"></button></div>
+    </div></div>`;
+  const el = n => f.querySelector(`[data-p="${n}"]`);
+  const carte = el('carte');
+  new ResizeObserver(() => { const w = Math.round(carte.offsetWidth), h = Math.round(carte.offsetHeight); if (w && h && carte.dataset.taille !== `${w}x${h}`) { carte.dataset.taille = `${w}x${h}`; carte.style.backgroundImage = `url(${papierFondu(w, h, 56).toDataURL()})`; } }).observe(carte);
+  let choix = avatarDebloque(avatarDe(profil.avatar)) ? profil.avatar : 'archer';
+  const remplir = () => {
+    el('choisi').src = portraitAvatar(avatarDe(choix), 168, false).toDataURL();
+    el('grille').innerHTML = '';
+    for (const a of AVATARS) {
+      const ok = avatarDebloque(a), cond = conditionAvatar(a), d = document.createElement('button');
+      d.style.cssText = `border:0;background:transparent;cursor:${ok ? 'pointer' : 'default'};padding:4px 2px;font-family:Plume,Georgia,serif;color:#1b1719;border-radius:10px;${a.id === choix ? 'outline:3px solid #c0232b;' : ''}`;
+      const im = document.createElement('img'); im.src = portraitAvatar(a, 128, !ok).toDataURL(); im.style.cssText = 'width:64px;height:64px;display:block;margin:0 auto';
+      const n = document.createElement('div'); n.textContent = a.nom; n.style.cssText = `font:bold 13px Pinceau,sans-serif;margin-top:2px;color:${ok ? '#1b1719' : '#9d9285'}`;
+      d.append(im, n);
+      if (!ok) {
+        const c = document.createElement('div');
+        const prog = cond[1] >= 60 && !a.jours && !a.parties ? `${dureeLisible(Math.min(cond[0], cond[1]))} / ${dureeLisible(cond[1])}` : `${Math.min(cond[0], cond[1])} / ${cond[1]}`;
+        c.textContent = `${cond[2]} (${a.meilleur ? formatTemps(Math.min(cond[0], cond[1])) + ' / ' + formatTemps(cond[1]) : prog})`;
+        c.style.cssText = 'font-size:11px;line-height:1.15;color:#8a7a68;margin-top:1px';
+        d.append(c);
+      } else d.onclick = () => { choix = a.id; remplir(); };
+      el('grille').append(d);
+    }
+  };
+  el('stats').textContent = `Temps de jeu : ${dureeLisible(profil.tempsTotal)}  ·  Meilleure partie : ${formatTemps(meilleurePartie())}  ·  Parties : ${profil.parties}  ·  Jours : ${profil.jours}`;
+  el('pseudo').value = profil.pseudo;
+  el('valider').textContent = puisJouer ? 'Valider et jouer' : 'Valider';
+  const valider = () => {
+    const p = nettoyerPseudo(el('pseudo').value);
+    if (!p) { el('etat').textContent = 'Choisissez un pseudo (16 lettres au plus).'; el('pseudo').focus(); return; }
+    profil.pseudo = p; profil.avatar = choix; sauverProfil(); ecrireLocal('muraille-pseudo', p);
+    const suite = apresProfil; fermerProfil(); if (suite) suite();
+  };
+  el('valider').onclick = valider;
+  el('fermer').onclick = () => fermerProfil();
+  el('pseudo').addEventListener('keydown', ev => { if (ev.key === 'Enter') valider(); if (ev.key === 'Escape') fermerProfil(); });
+  f.addEventListener('pointerdown', ev => { if (ev.target === f) fermerProfil(); });
+  remplir();
+  document.body.appendChild(f); fenetreProfil = f; profilOuvert = true;
+  if (!profil.pseudo) setTimeout(() => el('pseudo').focus(), 50);
+}
+function fermerProfil() { if (fenetreProfil && fenetreProfil.parentNode) fenetreProfil.remove(); fenetreProfil = null; profilOuvert = false; apresProfil = null; }
+// « Jouer » : sans pseudo, on passe d'abord par le profil
+function allerPreparer() { if (!profil.pseudo) ouvrirProfil(true); else ecran = 'preparation'; }
 function dessinerAccueil() {
   const t = performance.now() / 1000;
   if (imageMenu && !sousMenu) {
@@ -4883,6 +5059,7 @@ function dessinerAccueil() {
     if (record) texte(`Record : ${formatTemps(record)}`, W / 2, 300, 19, ROUGE, 'center', 'bold');
     texte('Défendez la muraille contre les hordes.', W / 2, 340, 18, ENCRE, 'center', 'italic', SERIF);
     dessinerMenuImage();
+    dessinerBadgeProfil();
     if (heritageOuvert) dessinerHeritage();
     return;
   }
@@ -4907,7 +5084,8 @@ function dessinerAccueil() {
 function clicAccueil(p) {
   if (heritageOuvert) { clicHeritage(p); return; }
   if (clicSousMenu(p)) return;
-  if (dedans(p, rectMenuImg(0))) { ecran = 'preparation'; return; }
+  if (dedans(p, BADGE_PROFIL)) { ouvrirProfil(false); return; }
+  if (dedans(p, rectMenuImg(0))) { allerPreparer(); return; }
   if (dedans(p, rectMenuImg(1))) { ouvrirHeritage(false); return; }
   if (dedans(p, rectMenuImg(2))) { ouvrirClassement(false); return; }
   if (dedans(p, rectMenuImg(3))) { sousMenu = 'options'; return; }
@@ -5311,7 +5489,8 @@ function dessinerFin() {
   texte(`${G.kills} monstres abattus · ${nombre(G.orGagne)} gouttes d'encre · ${G.cristauxGagnes} cristaux`, W / 2, 440, 18, ENCRE, 'center', 'italic', SERIF, W - 40);
   texte(G.nouveauRecord ? 'Nouveau record !' : `Record : ${formatTemps(record)}`, W / 2, 490, 21, ROUGE, 'center', 'bold');
   if (G.sceauxGagnes || G.piecesGagnees) texte(`+${G.sceauxGagnes || 0} sceaux d'héritage  ·  +${G.piecesGagnees || 0} pièces (${pieces} pour débloquer des cartes)`, W / 2, 528, 16, '#2c4268', 'center', 'bold', SERIF, W - 40);
-  texte(`${CLIQUEZ} pour préparer une nouvelle défense`, W / 2, 570, 21, ENCRE, 'center', 'bold');
+  if (G.avatarsNouveaux && G.avatarsNouveaux.length) texte(`Nouvel avatar débloqué : ${G.avatarsNouveaux.join(', ')} !`, W / 2, 552, 16, ROUGE, 'center', 'bold', SERIF, W - 40);
+  texte(`${CLIQUEZ} pour préparer une nouvelle défense`, W / 2, 582, 21, ENCRE, 'center', 'bold');
   medaillonRetour(BTN_IDEE_FIN, 'idee', 'Une idée ?'); medaillonRetour(BTN_BUG_FIN, 'bug', 'Un bug ?');
   medaillonRetour(BTN_CLASSEMENT_FIN, 'classement', G.scoreInscrit ? 'Classement' : 'Inscrire mon score');
   if (heritageOuvert) dessinerHeritage();
@@ -5332,6 +5511,7 @@ function boucle(maintenant) {
     // accéléré : on découpe le pas de temps pour garder une simulation stable (pas ≤ 1/60 s environ)
     majTuto();
     if (!G.pause && !G.choixNiveau && !G.reliquesOuvert && !tutoActif) {
+      if (!G.effondrement) { profil.tempsTotal += dt; profil.aSauver = (profil.aSauver || 0) + dt; if (profil.aSauver > 10) { profil.aSauver = 0; sauverProfil(); } }
       const n = Math.ceil(G.vitesse);
       for (let i = 0; i < n && ecran === 'jeu' && !G.choixNiveau; i++) mettreAJour(dt * G.vitesse / n);
     }
