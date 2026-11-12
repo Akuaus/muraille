@@ -3680,7 +3680,10 @@ function dessinerCartes() {
       if (k < l) { ctx.beginPath(); ctx.arc(px, py, 3.2, 0, 7); ctx.fill(); }
       else { ctx.globalAlpha = 0.45; ctx.beginPath(); ctx.arc(px, py, 2.8, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
     }
-    if (max && !pres) ctx.drawImage(sceau, r.x + r.w / 2 - 23, r.y + 88 + dy);
+    // Caserne : la pastille reste tant qu'il y a des archers à recruter (même sans assez d'encre)
+    const archersARecruter = b.id === 'caserne' && ACTIONS.archer.dispo();
+    const pastille = () => { ctx.fillStyle = ROUGE; ctx.beginPath(); ctx.arc(r.x + r.w - 8, r.y + 8 + dy, 5, 0, 7); ctx.fill(); };
+    if (max && !pres) { ctx.drawImage(sceau, r.x + r.w / 2 - 23, r.y + 88 + dy); if (archersARecruter) pastille(); }
     else {
       const ok = G.or >= cout, txt = nombre(cout);
       ctx.font = fonte('bold', 14, SANS); const tw = ctx.measureText(txt).width;
@@ -3689,9 +3692,7 @@ function dessinerCartes() {
       if (pres && prestige(b.id)) texte(`★${prestige(b.id)}`, r.x + 10, r.y + 13 + dy, 12, '#a8641c', 'left', 'bold');
       // pastille si l'amélioration ou l'action associée est possible
       const act = ACTION_DE[b.id] && ACTIONS[ACTION_DE[b.id]];
-      if (ok || (act && act.dispo() && G.or >= act.cout()) || talentPossible(b.id)) {
-        ctx.fillStyle = ROUGE; ctx.beginPath(); ctx.arc(r.x + r.w - 8, r.y + 8 + dy, 5, 0, 7); ctx.fill();
-      }
+      if (ok || (act && act.dispo() && G.or >= act.cout()) || talentPossible(b.id) || archersARecruter) pastille();
     }
   });
 }

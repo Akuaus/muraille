@@ -402,6 +402,8 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 - **Menu de détail** (`dessinerSelectionFamille`) : papier fondu comme les autres menus (plus de cadre), ✕ seul ; chaque
   alliance montre l'**icône de l'autre carte et sa famille** (« avec Atelier · Siège ») pour savoir où la chercher.
 - **Réparation** : chaque utilisation coûte 1 encre de plus (`G.reparations`, remis à zéro à chaque partie).
+- **Pastille rouge des cartes** (en jeu) : amélioration, action ou talent payable ; et, pour la **Caserne**, tant qu'il
+  reste des archers à recruter (même sans assez d'encre, même au niveau maximum).
 - (Avant le 12/11) Une rangée par famille (`dessinerRangeePrep`, `rectFamille`) : la carte choisie en large — icône, nom au pinceau,
   effet à la plume, alliances actives qui la concernent en rouge — et, à droite, « Changer ▸ » avec les autres cartes
   de la famille en petit (pâles si verrouillées). Toucher la rangée ouvre le **menu de sélection** de la famille
