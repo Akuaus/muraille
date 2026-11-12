@@ -340,7 +340,9 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   progression ; « Nouvel avatar débloqué : … » en fin de partie.
 - Statistiques (`profil`, localStorage `muraille-profil`) : pseudo, avatar, temps de jeu total (compté pendant les
   parties, hors pause), parties lancées, jours différents où l'on a ouvert le jeu, meilleure partie.
-- Pas encore envoyé au classement en ligne (la table `scores` n'a pas de colonne avatar).
+- **Classement** : l'avatar du profil part avec chaque score (`inscrireScore`) et s'affiche en portrait à côté du
+  pseudo (`imageAvatarClassement` ; absent → Archer). Base : `classement/avatar.sql` (colonne `avatar` + vue
+  `classement` qui la renvoie). Le jeu marche avec ou sans cette colonne (lecture et envoi réessayés sans l'avatar).
 
 ## Tutoriel (premières parties)
 - Conseils du maître d'armes (`TUTO`, `majTuto` / `dessinerTuto` / `clicTuto`) : chacun apparaît une seule fois, au moment

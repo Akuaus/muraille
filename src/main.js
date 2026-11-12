@@ -4406,18 +4406,23 @@ async function appelSupabase(chemin, options = {}) {
 async function lireClassement() {
   if (!classementEnLigne()) return { liste: classementLocal(), enLigne: false };
   try {
-    const liste = await appelSupabase('classement?select=pseudo,duree,vague,plateau&order=duree.desc&limit=20');
+    let liste;
+    try { liste = await appelSupabase('classement?select=pseudo,duree,vague,plateau,avatar&order=duree.desc&limit=20'); }
+    catch (e) { liste = await appelSupabase('classement?select=pseudo,duree,vague,plateau&order=duree.desc&limit=20'); } // base sans colonne avatar
     return { liste, enLigne: true };
   } catch (e) { return { liste: classementLocal(), enLigne: false, erreur: true }; }
 }
 async function inscrireScore(pseudo) {
-  const sc = { pseudo, duree: Math.max(1, Math.floor(G.t)), vague: vague(G.t), plateau: BATIMENTS.map(b => b.nom).join(', ') };
+  const sc = { pseudo, duree: Math.max(1, Math.floor(G.t)), vague: vague(G.t), plateau: BATIMENTS.map(b => b.nom).join(', '), avatar: profil.avatar || '' };
   const l = lireLocal('muraille-scores', []); l.push({ ...sc, date: new Date().toISOString() }); ecrireLocal('muraille-scores', l.slice(-200));
   ecrireLocal('muraille-pseudo', pseudo);
   G.scoreInscrit = true;
   if (!classementEnLigne()) return false;
-  try { await appelSupabase('scores', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(sc) }); return true; }
-  catch (e) { return false; }
+  const envoyer = corps => appelSupabase('scores', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(corps) });
+  try { await envoyer(sc); return true; }
+  catch (e) { // base sans colonne avatar : on réessaie sans
+    try { const { avatar, ...sansAvatar } = sc; await envoyer(sansAvatar); return true; } catch (e2) { return false; }
+  }
 }
 // fenêtre : inscription du pseudo (en fin de partie) + tableau des meilleurs
 function ouvrirClassement(depuisFin) {
@@ -4468,6 +4473,12 @@ function ouvrirClassement(depuisFin) {
   remplirClassement(lireLocal('muraille-pseudo', ''));
   if (peutInscrire) setTimeout(() => f.el('pseudo').focus(), 50);
 }
+// portrait d'avatar pour le classement (image en cache par avatar ; avatar inconnu ou absent → Archer)
+const portraitsClassement = {};
+function imageAvatarClassement(id) {
+  const a = AVATARS.find(x => x.id === id) || AVATARS[0];
+  return portraitsClassement[a.id] || (portraitsClassement[a.id] = portraitAvatar(a, 84, false).toDataURL());
+}
 async function remplirClassement(moi) {
   const f = fenetreClassement, zone = f.el('liste');
   zone.innerHTML = '<div style="text-align:center;font-size:18px;color:#5a4632">Chargement…</div>';
@@ -4478,6 +4489,7 @@ async function remplirClassement(moi) {
     const mien = moi && sc.pseudo.toLowerCase() === moi.toLowerCase(), m = medaille(i);
     return `<div style="display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid rgba(27,23,25,.15);${mien ? 'background:rgba(192,35,43,.12);' : ''}">
       <div style="width:34px;height:34px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font:18px Pinceau,sans-serif;${m ? `background:${m};color:#1b1719` : 'color:#5a4632'}">${i + 1}</div>
+      <img src="${imageAvatarClassement(sc.avatar)}" alt="" style="width:42px;height:42px;flex:none">
       <div style="flex:1;min-width:0">
         <div style="font-size:clamp(17px,4.2vw,22px);${mien ? 'color:#c0232b;' : ''}white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${echapper(sc.pseudo)}</div>
         <div style="font-size:clamp(12px,3vw,15px);color:#6a5a48;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">vague ${sc.vague}${sc.plateau ? ' · ' + echapper(sc.plateau) : ''}</div>
