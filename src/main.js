@@ -267,7 +267,38 @@ const ALLIANCES = [
 ];
 const alliancesDe = ids => ALLIANCES.filter(a => a.cartes.every(c => ids.includes(c)));
 const alliance = id => !!(G && G.alliances && G.alliances.has(id));
-const debloque = id => (DEBLOCAGE[id] || 0) <= (typeof record === 'number' ? record : 0);
+// =====================================================================
+//  PIÈCES : chaque partie en rapporte (2 par minute tenue + 1 tous les 50 monstres abattus) ; on les dépense à l'écran
+//  « Préparer la muraille » pour débloquer les cartes (prix = ancien ordre de déblocage par record). Les cartes déjà
+//  acquises avec l'ancien système (record) le restent. Mémorisé : 'muraille-pieces', 'muraille-cartes'.
+// =====================================================================
+const PRIX_CARTE = { comptoir: 10, fosse: 15, balistes: 18, poudrerie: 25, monastere: 28, fauconnerie: 35, temple: 40,
+  dojo: 50, sanctuaire: 60, alchimiste: 65, pagode: 70 };
+const piecesDePartie = (t, kills) => Math.round(t / 30) + Math.floor(kills / 50);
+let pieces = 0, cartesDebloquees = null;
+try { pieces = +localStorage.getItem('muraille-pieces') || 0; cartesDebloquees = JSON.parse(localStorage.getItem('muraille-cartes') || 'null'); } catch (e) { /* ignoré */ }
+if (!Array.isArray(cartesDebloquees)) { // première fois : les cartes déjà débloquées par le record restent acquises
+  let rec = 0; try { rec = +localStorage.getItem('muraille-record') || 0; } catch (e) { /* ignoré */ }
+  cartesDebloquees = Object.keys(DEBLOCAGE).filter(id => DEBLOCAGE[id] > 0 && DEBLOCAGE[id] <= rec);
+  sauverPieces();
+}
+cartesDebloquees = new Set(cartesDebloquees);
+function sauverPieces() { try { localStorage.setItem('muraille-pieces', String(pieces)); localStorage.setItem('muraille-cartes', JSON.stringify([...cartesDebloquees])); } catch (e) { /* ignoré */ } }
+const prixCarte = id => PRIX_CARTE[id] || 0;
+const debloque = id => !prixCarte(id) || cartesDebloquees.has(id);
+function acheterCarte(id) {
+  if (debloque(id) || pieces < prixCarte(id)) return false;
+  pieces -= prixCarte(id); cartesDebloquees.add(id); sauverPieces(); return true;
+}
+// pièce de monnaie ancienne (ronde, trou carré), dessinée à l'encre dorée
+function iconePiece(c, x, y, r) {
+  c.save();
+  c.fillStyle = '#c9962e'; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+  c.strokeStyle = '#7a5410'; c.lineWidth = Math.max(1, r * 0.16); c.stroke();
+  c.beginPath(); c.arc(x, y, r * 0.68, 0, 7); c.lineWidth = Math.max(0.8, r * 0.08); c.stroke();
+  c.fillStyle = '#f3e4cf'; const q = r * 0.3; c.fillRect(x - q, y - q, 2 * q, 2 * q);
+  c.restore();
+}
 const batimentDe = id => TOUS_BATIMENTS.find(b => b.id === id);
 let PLATEAU = { economie: 'mine', soutien: 'forge', siege: 'atelier', defense: 'macon' };
 try { const p = JSON.parse(localStorage.getItem('muraille-plateau')); if (p) for (const fa of FAMILLES) if (fa.cartes.includes(p[fa.id])) PLATEAU[fa.id] = p[fa.id]; } catch (e) { /* plateau par défaut */ }
@@ -2298,6 +2329,7 @@ function mettreAJour(dt) {
     Bruitages.jouer('murMassue', W / 2, 1);
     if (G.t > record) { record = G.t; G.nouveauRecord = true; try { localStorage.setItem('muraille-record', String(record)); } catch (e) { /* ignoré */ } }
     G.sceauxGagnes = Math.floor(G.t / 60) + (G.nouveauRecord ? 5 : 0); sceaux += G.sceauxGagnes; sauverHeritage();
+    G.piecesGagnees = piecesDePartie(G.t, G.kills); pieces += G.piecesGagnees; sauverPieces();
   }
 }
 
@@ -4729,7 +4761,12 @@ function dessinerHeritage() {
   const bf = BTN_FERMER_HERITAGE, survolX = dedansLarge(souris, bf);
   texte('✕', bf.x + bf.w / 2, bf.y + bf.h / 2 + 1, survolX ? 30 : 26, survolX ? ROUGE : ENCRE, 'center', 'bold');
   texte(heritageFin && G && G.sceauxGagnes ? `+${G.sceauxGagnes} sceaux gagnés · ${sceaux} à dépenser` : `Sceaux : ${sceaux}`, W / 2, P.y + 88, 22, ROUGE, 'center', 'bold');
-  texte('1 sceau par minute tenue, +5 pour un nouveau record. Ces bonus durent pour toujours.', W / 2, P.y + 112, 13, '#5a4632', 'center', 'italic', SERIF, P.w - 40);
+  if (heritageFin && G && G.piecesGagnees) {
+    const lib = `+${G.piecesGagnees} pièces aussi : de quoi débloquer des cartes dans « Préparer la muraille »`;
+    ctx.font = fonte('italic', 13, SERIF); const lw = Math.min(ctx.measureText(lib).width, P.w - 70);
+    iconePiece(ctx, W / 2 - lw / 2 - 12, P.y + 112, 8);
+    texte(lib, W / 2 + 6, P.y + 112, 13, '#7a5410', 'center', 'italic bold', SERIF, P.w - 70);
+  } else texte('1 sceau par minute tenue, +5 pour un nouveau record. Ces bonus durent pour toujours.', W / 2, P.y + 112, 13, '#5a4632', 'center', 'italic', SERIF, P.w - 40);
   HERITAGE.forEach((h, i) => {
     const n = herit(h.id), max = n >= h.max, cout = coutHeritage(h, n), ok = !max && sceaux >= cout, r = rectAchatHeritage(i), y = r.y + r.h / 2;
     if (i % 2 === 0) { // bande de lavis aux extrémités estompées
@@ -4986,7 +5023,7 @@ function clicPreparation(p) {
     if (dedansLarge(p, BTN_FERMER_SELECTION) || !dedans(p, PANNEAU_SELECTION)) { selectionFamille = null; return; }
     fa.cartes.forEach((id, j) => {
       if (!dedans(p, rectOption(j))) return;
-      if (debloque(id)) { PLATEAU[fa.id] = id; selectionFamille = null; } else refus(rectOption(j));
+      if (debloque(id)) { PLATEAU[fa.id] = id; selectionFamille = null; } else clicCarteVerrouillee(fa, id, rectOption(j));
     });
     return;
   }
@@ -4996,10 +5033,19 @@ function clicPreparation(p) {
   FAMILLES.forEach((fa, f) => fa.cartes.forEach((id, j) => {
     const c = cerclePrep(f, j);
     if (!dansCercle(p, c, 8)) return;
-    if (!debloque(id)) refus({ x: c.x - c.r, y: c.y - c.r, w: 2 * c.r, h: 2 * c.r });
+    if (!debloque(id)) clicCarteVerrouillee(fa, id, { x: c.x - c.r, y: c.y - c.r, w: 2 * c.r, h: 2 * c.r });
     else if (PLATEAU[fa.id] === id) selectionFamille = f;
     else PLATEAU[fa.id] = id;
   }));
+}
+// carte verrouillée : 1er toucher = « Débloquer ? » (prix affiché), 2e toucher (dans les 4 s) = achat et choix
+let achatEnAttente = null; // { id, t }
+const achatDemande = id => achatEnAttente && achatEnAttente.id === id && performance.now() - achatEnAttente.t < 4000;
+function clicCarteVerrouillee(fa, id, r) {
+  if (pieces < prixCarte(id)) { refus(r); achatEnAttente = null; return; }
+  if (!achatDemande(id)) { achatEnAttente = { id, t: performance.now() }; return; }
+  achatEnAttente = null;
+  if (acheterCarte(id)) PLATEAU[fa.id] = id;
 }
 function cadenas(x, y) {
   ctx.strokeStyle = ENCRE; ctx.fillStyle = ENCRE; ctx.lineWidth = 3;
@@ -5017,6 +5063,14 @@ function dessinerPreparation() {
   else { texte('Préparer la muraille', W / 2, 70, 34, ENCRE, 'center', 'bold'); texte('Choisissez vos constructions pour cette bataille.', W / 2, 130, 17, ENCRE, 'center', 'italic', SERIF); }
   const ouvert = selectionFamille !== null;
   let bulleCarte = null;
+  // survol d'un cercle : les cartes qui peuvent s'allier avec elle seront entourées de vert
+  alliesSurvol = null;
+  if (!ouvert) FAMILLES.forEach((fa, f) => fa.cartes.forEach((id, j) => {
+    if (dansCercle(souris, cerclePrep(f, j), 8)) alliesSurvol = new Set(ALLIANCES.filter(a => a.cartes.includes(id)).map(a => a.cartes.find(x => x !== id)));
+  }));
+  { ctx.font = fonte('bold', 20, SANS); const lib = String(pieces), lw = ctx.measureText(lib).width;
+    ctx.save(); ctx.fillStyle = 'rgba(241,232,216,0.85)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(10, 10, lw + 52, 36, 18) : ctx.rect(10, 10, lw + 52, 36); ctx.fill(); ctx.restore();
+    iconePiece(ctx, 30, 28, 11); texte(lib, 48, 29, 20, '#7a5410', 'left', 'bold'); }
   const choisiesPlateau = ['caserne', ...FAMILLES.map(fa => PLATEAU[fa.id])];
   FAMILLES.forEach((fa, fi) => {
     const r = rectFamille(fi);
@@ -5108,6 +5162,8 @@ function fondLavisCercle(r) {
   k.globalCompositeOperation = 'destination-in'; k.beginPath(); k.arc(r, r, r, 0, 7); k.fill();
   if (src) lavisCercle = { r, c }; return c; // (pas mis en cache tant que la maquette n'est pas chargée)
 }
+let alliesSurvol = null; // cartes alliables avec la carte survolée (cercle vert)
+const VERT_ALLIANCE = '#3f8a3a';
 function dessinerCerclesPrep(fa, fi, ouvert, choisies) {
   let bulle = null;
   fa.cartes.forEach((id, j) => {
@@ -5122,6 +5178,10 @@ function dessinerCerclesPrep(fa, fi, ouvert, choisies) {
     ctx.drawImage(ic, c.x - ic.width * e / 2, cy - ic.height * e / 2, ic.width * e, ic.height * e);
     ctx.restore();
     if (!ok) { ctx.save(); ctx.translate(c.x, cy + 4); ctx.scale(0.8, 0.8); cadenas(0, 0); ctx.restore(); }
+    if (alliesSurvol && alliesSurvol.has(id)) { // alliée possible de la carte survolée
+      ctx.save(); ctx.strokeStyle = VERT_ALLIANCE; ctx.lineWidth = 4; ctx.globalAlpha = 0.75 + 0.25 * Math.sin(performance.now() / 180);
+      ctx.beginPath(); ctx.arc(c.x, cy, c.r + 6, 0, 7); ctx.stroke(); ctx.restore();
+    }
     if (choisi) {
       const bx = c.x + c.r * 0.72, by = cy - c.r * 0.72;
       ctx.fillStyle = ROUGE; ctx.beginPath(); ctx.arc(bx, by, 11, 0, 7); ctx.fill();
@@ -5129,11 +5189,17 @@ function dessinerCerclesPrep(fa, fi, ouvert, choisies) {
       ctx.beginPath(); ctx.moveTo(bx - 5, by); ctx.lineTo(bx - 1, by + 4); ctx.lineTo(bx + 5, by - 4); ctx.stroke();
     }
     texte(b.nom, c.x, c.y + c.r + 18, 15, choisi ? ROUGE : ok ? ENCRE : '#9d9285', 'center', 'bold', SANS, 132);
-    if (!ok) texte(`record ${formatTemps(DEBLOCAGE[id])}`, c.x, c.y + c.r + 34, 11, '#9d9285', 'center', 'italic', SERIF);
+    if (!ok) {
+      const demande = achatDemande(id), assez = pieces >= prixCarte(id), lib = demande ? `Débloquer ? ${prixCarte(id)}` : String(prixCarte(id));
+      ctx.font = fonte('bold', 13, SANS); const lw = ctx.measureText(lib).width;
+      iconePiece(ctx, c.x - lw / 2 - 6, c.y + c.r + 35, 7);
+      texte(lib, c.x + 6, c.y + c.r + 35, 13, demande ? ROUGE : assez ? '#7a5410' : '#a89c8c', 'center', 'bold');
+      if (demande) { ctx.save(); ctx.strokeStyle = ROUGE; ctx.lineWidth = 3; ctx.setLineDash([7, 5]); ctx.beginPath(); ctx.arc(c.x, cy, c.r + 5, 0, 7); ctx.stroke(); ctx.restore(); }
+    }
     if (survol) {
       const al = ALLIANCES.filter(a => a.cartes.includes(id)).map(a => { const autre = a.cartes.find(x => x !== id); return `${a.nom} avec ${batimentDe(autre).nom} (${familleDe(autre)})`; });
       bulle = [{ t: `${b.nom} : ${b.resume}`, gras: true }];
-      if (!ok) bulle.push({ t: `Se débloque avec un record de ${formatTemps(DEBLOCAGE[id])}.` });
+      if (!ok) bulle.push({ t: pieces >= prixCarte(id) ? `Débloquer pour ${prixCarte(id)} pièces (vous en avez ${pieces}) : ${CLIQUEZ.toLowerCase()} deux fois.` : `Coûte ${prixCarte(id)} pièces (vous en avez ${pieces}). Chaque partie en rapporte.` });
       else if (al.length) bulle.push({ t: 'Alliances : ' + al.join(' · ') });
       bulle.push({ t: choisi ? `${CLIQUEZ} à nouveau pour voir le détail.` : `${CLIQUEZ} pour la choisir.` });
     }
@@ -5208,7 +5274,10 @@ function dessinerSelectionFamille(choisies) {
     if (!ok) {
       ctx.fillStyle = 'rgba(236,227,207,0.78)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(r.x, y, r.w, r.h, 8) : ctx.rect(r.x, y, r.w, r.h); ctx.fill();
       cadenas(cx, y + 110);
-      texte(`Record de ${formatTemps(DEBLOCAGE[id])} requis`, cx, y + 150, 15, ROUGE, 'center', 'bold');
+      const demande = achatDemande(id), lib = demande ? `Débloquer ? ${prixCarte(id)} pièces` : `${prixCarte(id)} pièces pour débloquer`;
+      ctx.font = fonte('bold', 15, SANS); const lw = ctx.measureText(lib).width;
+      iconePiece(ctx, cx - lw / 2 - 8, y + 150, 9);
+      texte(lib, cx + 8, y + 150, 15, demande || pieces >= prixCarte(id) ? ROUGE : '#8a7a68', 'center', 'bold');
     }
     if (choisi) {
       ctx.fillStyle = ROUGE; ctx.beginPath(); ctx.arc(r.x + r.w - 14, y + 14, 14, 0, 7); ctx.fill();
@@ -5241,7 +5310,7 @@ function dessinerFin() {
   texte(`Vous avez tenu ${formatTemps(G.t)}  ·  vague ${vague(G.t)}`, W / 2, 400, 24, ENCRE, 'center', '', SERIF);
   texte(`${G.kills} monstres abattus · ${nombre(G.orGagne)} gouttes d'encre · ${G.cristauxGagnes} cristaux`, W / 2, 440, 18, ENCRE, 'center', 'italic', SERIF, W - 40);
   texte(G.nouveauRecord ? 'Nouveau record !' : `Record : ${formatTemps(record)}`, W / 2, 490, 21, ROUGE, 'center', 'bold');
-  if (G.sceauxGagnes) texte(`+${G.sceauxGagnes} sceaux d'héritage (${sceaux} en réserve)`, W / 2, 528, 17, '#2c4268', 'center', 'bold', SERIF);
+  if (G.sceauxGagnes || G.piecesGagnees) texte(`+${G.sceauxGagnes || 0} sceaux d'héritage  ·  +${G.piecesGagnees || 0} pièces (${pieces} pour débloquer des cartes)`, W / 2, 528, 16, '#2c4268', 'center', 'bold', SERIF, W - 40);
   texte(`${CLIQUEZ} pour préparer une nouvelle défense`, W / 2, 570, 21, ENCRE, 'center', 'bold');
   medaillonRetour(BTN_IDEE_FIN, 'idee', 'Une idée ?'); medaillonRetour(BTN_BUG_FIN, 'bug', 'Un bug ?');
   medaillonRetour(BTN_CLASSEMENT_FIN, 'classement', G.scoreInscrit ? 'Classement' : 'Inscrire mon score');

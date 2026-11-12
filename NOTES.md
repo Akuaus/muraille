@@ -401,6 +401,14 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   (`etiquetteFondue` : fondu irrégulier, 34 px en haut / bas, 14 px sur les côtés pour ne pas manger le nom).
 - **Menu de détail** (`dessinerSelectionFamille`) : papier fondu comme les autres menus (plus de cadre), ✕ seul ; chaque
   alliance montre l'**icône de l'autre carte et sa famille** (« avec Atelier · Siège ») pour savoir où la chercher.
+- **Pièces (12/11/2026) : les cartes se débloquent en les achetant** (plus par le record). Chaque partie rapporte
+  `piecesDePartie` = 2 par minute tenue + 1 tous les 50 monstres (affiché dans l'Héritage de fin et le bilan).
+  Prix `PRIX_CARTE` : comptoir 10, fossé 15, balistes 18, poudrerie 25, monastère 28, fauconnerie 35, temple 40,
+  dojo 50, sanctuaire 60, alchimiste 65, pagode 70 (les autres sont gratuites). Achat : toucher une carte verrouillée
+  (« Débloquer ? prix », cercle pointillé rouge), la toucher à nouveau dans les 4 s (`clicCarteVerrouillee`) ; elle est
+  alors débloquée et choisie. Compteur de pièces en haut à gauche de l'écran. Mémorisé : `muraille-pieces`,
+  `muraille-cartes` ; à la première ouverture, les cartes déjà débloquées par le record restent acquises.
+- **Survol d'une carte** : les cartes qui peuvent s'allier avec elle sont entourées d'un **cercle vert** (`alliesSurvol`).
 - **Réparation** : chaque utilisation coûte 1 encre de plus (`G.reparations`, remis à zéro à chaque partie).
 - **Pastille rouge des cartes** (en jeu) : amélioration, action ou talent payable ; et, pour la **Caserne**, tant qu'il
   reste des archers à recruter (même sans assez d'encre, même au niveau maximum).
