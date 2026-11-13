@@ -3628,6 +3628,50 @@ function dessinerMortierSprite(m, i) {
   const C = P.cases[n], e = P.echelle;
   ctx.drawImage(P.c, C.x, C.y, C.w, C.h, m.x - (C.pieds[0] - C.x) * e, m.y + 2 - (C.pieds[1] - C.y) * e, C.w * e, C.h * e);
 }
+// ---------------------------------------------------------------------
+//  Boulet des mortiers (assets/boulet-dragon.webp, planche du joueur : 8 images de 250 px, fond transparent) : une
+//  tête de dragon de feu suivie d'une traînée de fumée. Pour rester discret : petit (30 px de long au pied de la
+//  muraille, plus petit au loin), légèrement transparent et adouci (moins saturé), sans l'explosion de départ (le
+//  mortier a déjà sa flamme). La tête pointe dans le sens du vol (montée puis descente) ; vers la gauche, l'image est
+//  retournée. Images 3 → 5 au départ, puis 5 ↔ 7 en vol. Repli : le boulet d'encre dessiné par le code.
+// ---------------------------------------------------------------------
+const BOULET = { src: 'assets/boulet-dragon.webp', images: 8, longueur: 30, opacite: 0.9, saturation: 0.75 };
+let planchesBoulet = null;
+{ const img = new Image(); img.onload = () => { try { planchesBoulet = preparerBoulet(img); } catch (e) { planchesBoulet = null; } }; img.src = BOULET.src; }
+function preparerBoulet(img) {
+  const n = BOULET.images, cw = Math.floor(img.width / n), h = img.height, images = [];
+  for (let i = 0; i < n; i++) {
+    const c = creerCanvas(cw, h), k = c.getContext('2d');
+    k.drawImage(img, i * cw, 0, cw, h, 0, 0, cw, h);
+    const id = k.getImageData(0, 0, cw, h), d = id.data;
+    let x0 = cw, x1 = 0, y0 = h, y1 = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < cw; x++) {
+      const p = (y * cw + x) * 4; if (d[p + 3] < 40) continue;
+      // adoucir : un peu moins saturé, pour se fondre dans l'encre du décor
+      const g = (d[p] + d[p + 1] + d[p + 2]) / 3, s = BOULET.saturation;
+      d[p] = g + (d[p] - g) * s; d[p + 1] = g + (d[p + 1] - g) * s; d[p + 2] = g + (d[p + 2] - g) * s;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    k.putImageData(id, 0, 0);
+    // la tête : le coin haut-droit du dessin ; la traînée part vers le bas-gauche (angle mesuré de la queue à la tête)
+    const tete = [x1 - (x1 - x0) * 0.16, y0 + (y1 - y0) * 0.17], queue = [x0 + (x1 - x0) * 0.1, y1 - (y1 - y0) * 0.08];
+    images.push({ c, tete, angle: Math.atan2(tete[1] - queue[1], tete[0] - queue[0]), longueur: Math.hypot(tete[0] - queue[0], tete[1] - queue[1]) });
+  }
+  return images;
+}
+function dessinerBouletDragon(r, x, y) {
+  const P = planchesBoulet, ti = r.t;
+  const k = ti < 0.15 ? 3 + Math.floor(ti / 0.15 * 3) : 5 + [0, 1, 2, 1][Math.floor(G.t * 10) % 4];
+  const im = P[Math.min(P.length - 1, k)];
+  // direction du vol : dérivée de la trajectoire (ligne droite au sol + arc de 120 px)
+  const vx = r.x1 - r.x0, vy = (r.y1 - r.y0) - 120 * Math.PI * Math.cos(Math.PI * ti), gauche = vx < 0;
+  const angle = Math.atan2(vy, Math.abs(vx)) - im.angle;
+  const e = BOULET.longueur / im.longueur * perspective(y + 60);
+  ctx.save(); ctx.globalAlpha = BOULET.opacite;
+  ctx.translate(x, y); ctx.scale(gauche ? -1 : 1, 1); ctx.rotate(angle); ctx.scale(e, e);
+  ctx.drawImage(im.c, -im.tete[0], -im.tete[1]);
+  ctx.restore();
+}
 // mortier à poudre (repli) : fût trapu cerclé, mèche rouge quand il est prêt
 function dessinerMortier(m, i) {
   if (plancheMortier) { dessinerMortierSprite(m, i); return; }
@@ -4160,6 +4204,7 @@ function dessinerJeu() {
 
   for (const r of G.rochers) {
     const x = r.x0 + (r.x1 - r.x0) * r.t, y = r.y0 + (r.y1 - r.y0) * r.t, h = Math.sin(Math.PI * r.t) * 120;
+    if (r.poudre && planchesBoulet) { dessinerBouletDragon(r, x, y - h); continue; }
     ctx.fillStyle = r.poudre ? ENCRE : '#4a3a2c'; ctx.strokeStyle = ENCRE; ctx.lineWidth = 1.6;
     cheminBlob(ctx, x, y - h, 6 + h / 40, 5 + h / 45, r.x0 + r.x1, t * 2, 0.15, 8); ctx.fill(); ctx.stroke();
     if (r.poudre) { ctx.fillStyle = Math.sin(t * 40) > 0 ? '#ffd66e' : ROUGE; ctx.beginPath(); ctx.arc(x + 5, y - h - 7, 2.2, 0, 7); ctx.fill(); }

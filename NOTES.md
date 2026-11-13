@@ -65,6 +65,11 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   En ouvrant `index.html` directement (file://), le navigateur peut refuser les polices : polices de secours.
 
 ## Sprites dessinés (assets/)
+- **Boulets des mortiers (13/11/2026)** : planche du joueur `assets/boulet-dragon.webp` (8 images de 250 px, fond
+  transparent ; original dans `sources/`) : tête de dragon de feu + traînée de fumée. Adoucie pour ne pas choquer
+  (`BOULET` : 30 px de long au pied du mur × perspective, opacité 0,9, saturation ×0,75), sans l'explosion de départ
+  (le mortier a déjà sa flamme). La tête pointe dans le sens du vol (dérivée de l'arc), image retournée vers la
+  gauche ; images 3→5 au départ puis 5↔7 en vol (`dessinerBouletDragon`). Repli : le boulet d'encre du code.
 - **Mortiers de la Poudrerie (13/11/2026)** : planche du joueur `assets/mortier.webp` (8 × 3 sur fond magenta,
   original dans `sources/`), détourée au chargement (`preparerMortier` : magenta retiré, fumée et flammes « démélangées »,
   fumée ramenée au gris neutre ; pieds mesurés image par image). Repos = ligne 0 (le drapeau flotte), juste avant le
