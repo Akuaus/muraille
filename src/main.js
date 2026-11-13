@@ -305,8 +305,8 @@ let PLATEAU = { economie: 'mine', soutien: 'forge', siege: 'atelier', defense: '
 try { const p = JSON.parse(localStorage.getItem('muraille-plateau')); if (p) for (const fa of FAMILLES) if (fa.cartes.includes(p[fa.id])) PLATEAU[fa.id] = p[fa.id]; } catch (e) { /* plateau par défaut */ }
 // ordre des cartes à l'écran : économie, soutien, caserne, siège, défense
 let BATIMENTS = [];
-function composerPlateau() {
-  for (const fa of FAMILLES) if (!debloque(PLATEAU[fa.id])) PLATEAU[fa.id] = fa.cartes[0];
+function composerPlateau(imposees = false) { // imposées (défi du jour) : même les cartes verrouillées
+  if (!imposees) for (const fa of FAMILLES) if (!debloque(PLATEAU[fa.id])) PLATEAU[fa.id] = fa.cartes[0];
   BATIMENTS = [batimentDe(PLATEAU.economie), batimentDe(PLATEAU.soutien), batimentDe('caserne'), batimentDe(PLATEAU.siege), batimentDe(PLATEAU.defense)];
 }
 
@@ -343,7 +343,7 @@ const ACTIONS = {
     faire: () => { G.cristaux -= 1; G.or += valeurTroc(); } },
   reparer: { // chaque réparation coûte 1 encre de plus que la précédente (compteur remis à zéro à chaque partie)
     cout: () => Math.ceil(G.mur.max * 0.1 * 0.3) + (G.reparations || 0),
-    dispo: () => G.mur.pv < G.mur.max,
+    dispo: () => G.mur.pv < G.mur.max && !defiModif('sansRep'),
     libelle: () => 'Réparer +10 %',
     court: () => 'Mur intact',
     faire: () => { G.mur.pv = Math.min(G.mur.max, G.mur.pv + G.mur.max * 0.1); G.reparations = (G.reparations || 0) + 1; } },
@@ -567,7 +567,7 @@ const HERITAGE = [
 const coutHeritage = (h, n) => Math.round(h.base * Math.pow(1.7, n));
 let heritage = {}, sceaux = 0;
 try { heritage = JSON.parse(localStorage.getItem('muraille-heritage')) || {}; sceaux = +localStorage.getItem('muraille-sceaux') || 0; } catch (e) { /* ignoré */ }
-const herit = id => heritage[id] || 0;
+const herit = id => (typeof G !== 'undefined' && G && G.defi && G.defi.modif.id === 'sansHeritage') ? 0 : heritage[id] || 0;
 function sauverHeritage() { try { localStorage.setItem('muraille-heritage', JSON.stringify(heritage)); localStorage.setItem('muraille-sceaux', String(sceaux)); } catch (e) { /* ignoré */ } }
 function acheterHeritage(h) {
   const n = herit(h.id); if (n >= h.max || sceaux < coutHeritage(h, n)) return false;
@@ -1733,9 +1733,11 @@ function nouvellePartie() {
   G.corbeaux = []; G.prochainCorbeau = rand(5, 10);
   G.alliances = new Set(alliancesDe(BATIMENTS.map(b => b.id)).map(a => a.id));
   ajouterArcher(); ajouterArcher();
+  G.defi = defiDemande; defiDemande = null; // défi du jour (ou partie normale)
   // héritage : bonus permanents de départ
   for (let k = 0; k < herit('veterans'); k++) ajouterArcher();
   G.or += 80 * herit('tresor'); G.mur.max += 100 * herit('fondations'); G.mur.pv = G.mur.max; G.cristaux += 3 * herit('cristal');
+  if (defiModif('murFragile')) { G.mur.max = Math.round(G.mur.max * 0.6); G.mur.pv = G.mur.max; }
   tctx.clearRect(0, 0, W, CHAMP_H);
 }
 
@@ -2022,7 +2024,7 @@ const pieds = e => e.y + e.taille * 1.1;
 // centre apparent du corps, une fois l'échelle de profondeur appliquée
 const centreY = e => pieds(e) - e.taille * 1.1 * perspective(pieds(e));
 // vitesse apparente (px/s à l'écran) : lente au loin, rapide près du mur, ralentie par la brume
-const vitesseEcran = e => e.ty.vit * (e.elite === 'enrage' ? ELITES.enrage.vitesse : 1) * perspective(pieds(e)) * COMPENSATION_PROFONDEUR * (G.brume > 0 ? 0.5 : 1) * ralentissement(e);
+const vitesseEcran = e => (defiModif('rapides') ? 1.25 : 1) * e.ty.vit * (e.elite === 'enrage' ? ELITES.enrage.vitesse : 1) * perspective(pieds(e)) * COMPENSATION_PROFONDEUR * (G.brume > 0 ? 0.5 : 1) * ralentissement(e);
 
 // Statistiques de partie : dégâts réellement infligés par source (G.stats), vie de la muraille toutes les 5 s (G.histoMur)
 const NOM_SOURCE = { fleche: 'Archers', roc: 'Catapultes', sabre: 'Samouraïs', sort: 'Sorts' };
@@ -2052,13 +2054,14 @@ function majTextesEncre(dt) {
 function secouer(force) { if (G) G.secousse = Math.max(G.secousse || 0, force); }
 function tuer(e) {
   e.mort = true; e.fonte = 0;
+  compterSucces('kills'); if (e.k === 'troll') compterSucces('trolls'); if (e.k === 'chef') compterSucces('chefs');
   // la mort éclabousse d'encre, plus fort pour les gros
   const gros = e.k === 'troll' || e.k === 'chef';
   eclabousser(e.x, e.y - e.taille * 0.4, gros ? 14 : 4, gros ? 170 : 90, gros ? 2 : 1.2, -60);
   if (e.k === 'chef') secouer(6); else if (e.k === 'troll') secouer(2.5);
   G.kills++;
   const bonusElite = e.elite ? (e.elite === 'colosse' ? 3 : 2) : 1;
-  const gain = Math.round(bonusElite * e.ty.or * (1 + 0.03 * G.t / 60) * (1 + NUIT_EFFETS.butin * niveauNuit(G.t)) * (1 + 0.2 * nv('pillage')) * (1 + 0.12 * G.bat.comptoir) * (G.talents.comptoir ? 1.25 : 1) * (e.poison > 0 && alliance('venin') ? 1.3 : 1));
+  const gain = Math.round((defiModif('encreRare') ? 0.7 : 1) * bonusElite * e.ty.or * (1 + 0.03 * G.t / 60) * (1 + NUIT_EFFETS.butin * niveauNuit(G.t)) * (1 + 0.2 * nv('pillage')) * (1 + 0.12 * G.bat.comptoir) * (G.talents.comptoir ? 1.25 : 1) * (e.poison > 0 && alliance('venin') ? 1.3 : 1));
   if (e.poison > 0 && G.talents.alchimiste) contagion(e);
   G.or += gain; G.orGagne += gain;
   // l'encre gagnée n'est plus affichée à chaque monstre : elle est regroupée (voir majTextesEncre)
@@ -2408,10 +2411,11 @@ function mettreAJour(dt) {
   if (G.mur.pv <= 0) {
     G.mur.pv = 0; G.effondrement = { t: 0, nuages: [] }; G.choix = null; Musique.arreter(2); // l'écran de fin vient après la chute du pavillon
     Bruitages.jouer('murMassue', W / 2, 1);
-    if (G.t > record) { record = G.t; G.nouveauRecord = true; try { localStorage.setItem('muraille-record', String(record)); } catch (e) { /* ignoré */ } }
+    if (G.defi) finDefi();
+    if (!G.defi && G.t > record) { record = G.t; G.nouveauRecord = true; try { localStorage.setItem('muraille-record', String(record)); } catch (e) { /* ignoré */ } }
     G.sceauxGagnes = Math.floor(G.t / 60) + (G.nouveauRecord ? 5 : 0); sceaux += G.sceauxGagnes; sauverHeritage();
     G.piecesGagnees = piecesDePartie(G.t, G.kills); pieces += G.piecesGagnees; sauverPieces();
-    profil.meilleur = Math.max(profil.meilleur || 0, G.t); sauverProfil();
+    profil.meilleur = Math.max(profil.meilleur || 0, G.t); sauverProfil(); verifierSucces(); sauverSucces();
     setTimeout(() => sauverEnLigne(true), 1500); // après l'inscription du score
     G.avatarsNouveaux = AVATARS.filter(a => avatarDebloque(a) && G.avatarsAvant && !G.avatarsAvant.has(a.id)).map(a => a.nom);
     // le score est inscrit tout seul au classement, sous le pseudo du profil (parties d'au moins 10 s)
@@ -2643,7 +2647,9 @@ function dessinerBoutonPause() {
   if (survol && !G.pause) texte('Pause (Espace)', W - 18, 150, 12, ENCRE, 'right', 'italic bold', SERIF);
 }
 
-const PANNEAU_W = 372, PANNEAU_H = 150;
+// au doigt (téléphone, tablette) : panneau plus large, boutons plus hauts, texte plus grand
+const PB = TACTILE ? { w: 452, h: 202, bouton: 46, l1: 82, l2: 140, police: 17 } : { w: 372, h: 166, bouton: 34, l1: 76, l2: 120, police: 14 };
+const PANNEAU_W = PB.w, PANNEAU_H = PB.h;
 function panneauRect(i) {
   const c = rectCarte(i);
   return { x: clamp(c.x + c.w / 2 - PANNEAU_W / 2, 10, W - 10 - PANNEAU_W), y: CARTE_Y - PANNEAU_H - 14, w: PANNEAU_W, h: PANNEAU_H };
@@ -2651,14 +2657,14 @@ function panneauRect(i) {
 function boutonsPanneau(i) {
   const b = BATIMENTS[i], l = G.bat[b.id], pr = panneauRect(i), act = ACTION_DE[b.id] && ACTIONS[ACTION_DE[b.id]];
   const max = l >= b.max, cout = max ? 0 : b.cout(l);
-  const w = act ? 166 : PANNEAU_W - 28;
+  const w = act ? Math.round((PANNEAU_W - 40) * 0.47) : PANNEAU_W - 28;
   const pres = max && PRESTIGE[b.id];
   const res = [pres ? {
-    r: { x: pr.x + 14, y: pr.y + 60, w, h: 34 },
+    r: { x: pr.x + 14, y: pr.y + PB.l1, w, h: PB.bouton },
     libelle: `Prestige ★${prestige(b.id) + 1}`, cout: prestigeCout(b.id), ok: G.or >= prestigeCout(b.id),
     faire: () => acheterPrestige(b.id),
   } : {
-    r: { x: pr.x + 14, y: pr.y + 60, w, h: 34 },
+    r: { x: pr.x + 14, y: pr.y + PB.l1, w, h: PB.bouton },
     libelle: max ? 'Niveau max' : (l === 0 ? 'Bâtir' : 'Améliorer'),
     cout: max ? null : cout, ok: !max && G.or >= cout,
     faire: () => ameliorer(i),
@@ -2666,7 +2672,7 @@ function boutonsPanneau(i) {
   if (act) {
     const dispo = act.dispo();
     res.push({
-      r: { x: pr.x + 14 + w + 12, y: pr.y + 60, w: PANNEAU_W - 40 - w, h: 34 },
+      r: { x: pr.x + 14 + w + 12, y: pr.y + PB.l1, w: PANNEAU_W - 40 - w, h: PB.bouton },
       libelle: dispo ? act.libelle() : act.court(),
       cout: dispo ? act.cout() : null, ok: dispo && G.or >= act.cout(),
       faire: () => agir(act),
@@ -2675,7 +2681,7 @@ function boutonsPanneau(i) {
   // talent (cristaux), sur une seconde ligne
   const ta = TALENTS[b.id], acquis = G.talents[b.id];
   res.push({
-    r: { x: pr.x + 14, y: pr.y + 104, w: PANNEAU_W - 28, h: 34 },
+    r: { x: pr.x + 14, y: pr.y + PB.l2, w: PANNEAU_W - 28, h: PB.bouton },
     libelle: acquis ? `✦ ${ta.nom} — acquis` : (l === 0 ? `✦ ${ta.nom} — bâtir d'abord` : `✦ ${ta.nom}`),
     cout: acquis || l === 0 ? null : ta.cout, cristal: true, talent: true,
     ok: talentPossible(b.id),
@@ -2719,6 +2725,7 @@ function acheterTalent(id) {
 function sortPret(s) { return (G.recharges[s.id] || 0) <= 0 && G.cristaux >= s.cout; }
 function lancerSort(s) {
   if (!sortPret(s)) return false;
+  compterSucces('sorts'); if (s.id === 'raz') compterSucces('raz');
   G.cristaux -= s.cout; G.recharges[s.id] = s.recharge * (1 - 0.15 * nv('grimoire')) * (1 - 0.05 * relique('sablier'));
   if (s.id === 'pluie') {
     G.pluieImpact = 0.7;
@@ -2807,12 +2814,26 @@ function coordsSouris(ev) {
 }
 canvas.addEventListener('pointermove', ev => { souris = coordsSouris(ev); });
 canvas.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') souris = { x: -1, y: -1 }; });
+// Au doigt, en jeu, sur une carte de bâtiment : un toucher bref ouvre le panneau (au relâchement) ; un appui long
+// (0,45 s) montre la fiche de la carte, qui disparaît quand on relâche (sans ouvrir le panneau).
+let appuiCarte = null; // { i, t, minuteur }
+const carteSous = p => { if (ecran !== 'jeu' || !G || G.pause || G.choixNiveau || G.reliquesOuvert || tutoActif || G.effondrement) return -1; return BATIMENTS.findIndex((b, i) => dedans(p, rectCarte(i))); };
 canvas.addEventListener('pointerdown', ev => {
   if (ev.pointerType === 'mouse' && ev.button !== 0) return;
   ev.preventDefault();
   souris = coordsSouris(ev); // au doigt, la carte touchée reste « survolée » (son aide reste affichée)
+  const i = ev.pointerType !== 'mouse' ? carteSous(souris) : -1;
+  if (i >= 0) { appuiCarte = { i, p: souris, minuteur: setTimeout(() => { if (appuiCarte) { G.infoCarte = appuiCarte.i; appuiCarte.long = true; } }, 450) }; return; }
   clic(souris);
 });
+addEventListener('pointerup', () => {
+  if (!appuiCarte) return;
+  clearTimeout(appuiCarte.minuteur);
+  if (!appuiCarte.long) clic(appuiCarte.p);
+  if (G) G.infoCarte = null;
+  appuiCarte = null;
+});
+addEventListener('pointercancel', () => { if (appuiCarte) { clearTimeout(appuiCarte.minuteur); appuiCarte = null; if (G) G.infoCarte = null; } });
 canvas.addEventListener('contextmenu', ev => ev.preventDefault()); // pas de menu sur appui long
 // Sur mobile, seul le relâchement du doigt compte comme geste : c'est là qu'on réveille le son et qu'on passe en plein écran
 function apresGeste(ev) {
@@ -2827,7 +2848,7 @@ function apresGeste(ev) {
 }
 addEventListener('pointerup', apresGeste);
 addEventListener('keydown', ev => {
-  if (retourOuvert || classementOuvert || profilOuvert) return; // on écrit (retour, pseudo) : les touches ne pilotent plus le jeu
+  if (retourOuvert || classementOuvert || profilOuvert || defiOuvert) return; // on écrit (retour, pseudo) : les touches ne pilotent plus le jeu
   if (ecran === 'titre') { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); ecran = 'accueil'; } return; }
   if (ecran === 'accueil') {
     if (heritageOuvert) { if (ev.key === 'Escape' || ev.key === 'Enter' || ev.key === ' ') fermerHeritage(); return; }
@@ -3510,6 +3531,7 @@ function dessinerMuraille(t) {
     }
   }
   drapeauxMuraille(t);
+  dessinerBannieresDojo(t);
   // les monstres au contact du mur passent devant le pavillon et les créneaux, pour rester lisibles
   G.ennemis.filter(e => e.auMur).sort((a, b) => a.y - b.y).forEach(dessinerEnnemi);
   // samouraïs et monstres qu'ils retiennent : au premier plan aussi (sinon le pavillon les cache)
@@ -3578,10 +3600,42 @@ function dessinerBrasiers(t) {
     ctx.restore();
   }
 }
+// Dojo : bannières noires frappées de « 武 » (l'art martial) accrochées à la face de la muraille, de part et d'autre
+// du pavillon ; une au niveau 1, deux dès le niveau 3, pompons dorés au niveau maximum. Elles ondulent un peu.
+function dessinerBannieresDojo(t) {
+  const l = G.bat.dojo; if (!l) return;
+  const postes = l >= 3 ? [W / 2 - 112, W / 2 + 112] : [W / 2 - 112];
+  for (const [k, x] of postes.entries()) {
+    const y = murHaut(x) + 10, w = 26, h = 46 + Math.min(l, 5) * 2, o = Math.sin(t * 1.6 + k * 2) * 1.6;
+    ctx.save();
+    ctx.fillStyle = 'rgba(27,23,25,0.25)'; ctx.fillRect(x - w / 2 + 3, y + 3, w, h); // ombre sur la pierre
+    ctx.fillStyle = '#1f1b1d';
+    ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x + w / 2, y);
+    ctx.lineTo(x + w / 2 + o, y + h); ctx.lineTo(x + o, y + h - 7); ctx.lineTo(x - w / 2 + o, y + h); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#7a5a2a'; ctx.fillRect(x - w / 2 - 4, y - 3, w + 8, 4); // hampe
+    ctx.restore();
+    texte('武', x + o * 0.5, y + h * 0.42, 17, PAPIER, 'center', 'bold', SERIF);
+    if (l >= batimentDe('dojo').max) { ctx.fillStyle = '#c9962e'; for (const dx of [-w / 2 + 2, w / 2 - 2]) { ctx.beginPath(); ctx.arc(x + dx + o, y + h + 3, 3, 0, 7); ctx.fill(); } }
+  }
+}
 // pieux du fossé, plantés en travers du chemin devant la muraille
 function dessinerPieux() {
   if (!G.bat.fosse) return;
   const y0 = MUR_Y - ARRET_MUR - 4, demi = cheminDemi(y0), c = cheminCentre(y0), n = 6 + G.bat.fosse * 3;
+  // la tranchée : une bande d'eau d'encre qui barre le chemin, plus large à chaque niveau, avec des rides
+  { const t = performance.now() / 1000, yf = murHaut(c) - ARRET_MUR - 30, hf = 7 + G.bat.fosse * 2.2, poison = G.talents.fosse;
+    ctx.save();
+    const g = ctx.createLinearGradient(0, yf - hf, 0, yf + hf);
+    const teinte = poison ? '58,78,40' : '27,30,38';
+    g.addColorStop(0, `rgba(${teinte},0)`); g.addColorStop(0.35, `rgba(${teinte},0.42)`); g.addColorStop(0.7, `rgba(${teinte},0.34)`); g.addColorStop(1, `rgba(${teinte},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(c, yf, demi * 1.04, hf, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = poison ? 'rgba(190,220,150,0.5)' : 'rgba(225,230,240,0.45)'; ctx.lineWidth = 1.3; ctx.lineCap = 'round';
+    for (let k = 0; k < 4 + G.bat.fosse; k++) { // rides qui glissent doucement
+      const u = ((k * 0.37 + t * 0.06) % 1) * 2 - 1, x = c + u * demi * 0.85, y = yf + Math.sin(k * 2.1) * hf * 0.35, l = 10 + (k % 3) * 5;
+      ctx.beginPath(); ctx.moveTo(x - l / 2, y); ctx.quadraticCurveTo(x, y - 2, x + l / 2, y); ctx.stroke();
+    }
+    ctx.restore(); }
   ctx.strokeStyle = ENCRE; ctx.lineCap = 'round';
   for (let i = 0; i < n; i++) {
     const x = c - demi + (i + 0.5) * (2 * demi / n), y = murHaut(x) - ARRET_MUR - 18, h = 14 + (i * 7 % 5) * 2, pen = (i % 2 ? 1 : -1) * 0.3;
@@ -3822,26 +3876,51 @@ function dessinerCartes() {
   });
 }
 
+let survolCarte = { i: -1, t: 0 };
+const fichesFondues = {}; // papier de la fiche, par taille (préparé une fois)
+function dessinerFicheCarte() {
+  let i = G.infoCarte;
+  if ((i === null || i === undefined) && !TACTILE && G.choix === null && !G.pause) {
+    const sous = carteSous(souris);
+    if (sous !== survolCarte.i) survolCarte = { i: sous, t: performance.now() };
+    if (sous >= 0 && performance.now() - survolCarte.t > 600) i = sous;
+  }
+  if (i === null || i === undefined || i < 0) return;
+  const b = BATIMENTS[i], l = G.bat[b.id], c = rectCarte(i), w = TACTILE ? 470 : 400, ta = TALENTS[b.id];
+  const lignes = [
+    ...lignesDe(b.resume, w - 40, `italic 15px ${SERIF}`).map(t => ({ t, s: 'italic', c: '#3a3230' })),
+    ...lignesDe(l >= b.max && PRESTIGE[b.id] ? PRESTIGE[b.id].info(prestige(b.id)) : b.info(l), w - 40, `14px ${SERIF}`).map(t => ({ t, s: '', c: ENCRE })),
+    ...(ta ? lignesDe(`✦ Talent ${ta.nom} (${ta.cout} cristaux) : ${ta.desc}`, w - 40, `14px ${SERIF}`).map(t => ({ t, s: '', c: '#34507a' })) : []),
+  ].slice(0, 7);
+  const h = 52 + lignes.length * 19, x = clamp(c.x + c.w / 2 - w / 2, 10, W - 10 - w), y = c.y - h - 16, m = 22;
+  const cle = (w + 2 * m) + 'x' + (h + 2 * m), fiche = fichesFondues[cle] || (fichesFondues[cle] = papierFondu(w + 2 * m, h + 2 * m, 30));
+  ctx.drawImage(fiche, x - m, y - m);
+  texte(`${b.nom}  ·  niveau ${l} / ${b.max}`, x + 20, y + 24, 18, ENCRE, 'left', 'bold');
+  lignes.forEach((li, k) => texte(li.t, x + 20, y + 50 + k * 19, li.s === 'italic' ? 15 : 14, li.c, 'left', li.s, SERIF));
+}
 function dessinerPanneau() {
+  dessinerFicheCarte();
   if (G.choix === null) return;
   const i = G.choix, b = BATIMENTS[i], l = G.bat[b.id], pr = panneauRect(i);
   ctx.drawImage(parchemin(pr.w, pr.h), pr.x - 10, pr.y - 10);
-  texte(`${b.nom}  ·  niveau ${l} / ${b.max}`, pr.x + 16, pr.y + 18, 17, ENCRE, 'left', 'bold');
+  texte(`${b.nom}  ·  niveau ${l} / ${b.max}`, pr.x + 16, pr.y + 18, TACTILE ? 19 : 17, ENCRE, 'left', 'bold');
   const boutons = boutonsPanneau(i);
   const surTalent = boutons.some(bt => bt.talent && dedans(souris, bt.r));
   const info = surTalent ? `✦ ${TALENTS[b.id].desc}` : (l >= b.max && PRESTIGE[b.id] ? PRESTIGE[b.id].info(prestige(b.id)) : b.info(l));
-  texte(info, pr.x + 16, pr.y + 41, 14, surTalent ? '#34507a' : ENCRE, 'left', 'italic', SERIF, pr.w - 30);
+  lignesDe(info, pr.w - 32, `italic ${TACTILE ? 15 : 14}px ${SERIF}`).slice(0, 2).forEach((li, k) =>
+    texte(li, pr.x + 16, pr.y + 40 + k * (TACTILE ? 19 : 17), TACTILE ? 15 : 14, surTalent ? '#34507a' : ENCRE, 'left', 'italic', SERIF, pr.w - 30));
   for (const bt of boutons) {
     const r = bt.r, survol = dedans(souris, r);
     const img = bt.talent ? boutonCristal(r.w, r.h, bt.ok) : boutonEncre(r.w, r.h, bt.ok);
     ctx.drawImage(img, r.x - 6, r.y - 4 + (survol && bt.ok ? -1 : 0));
     const coul = bt.ok ? PAPIER : '#f3ece2';
-    if (bt.cout === null) texte(bt.libelle, r.x + r.w / 2, r.y + r.h / 2, 14, coul, 'center', 'bold', SANS, r.w - 12);
+    const pf = PB.police;
+    if (bt.cout === null) texte(bt.libelle, r.x + r.w / 2, r.y + r.h / 2, pf, coul, 'center', 'bold', SANS, r.w - 12);
     else {
-      texte(bt.libelle, r.x + 10, r.y + r.h / 2, 14, coul, 'left', 'bold', SANS, r.w - 70);
-      if (bt.cristal) cristalIcone(ctx, r.x + r.w - 52, r.y + r.h / 2 - 1, 5.5, coul);
-      else goutteIcone(ctx, r.x + r.w - 52, r.y + r.h / 2 - 1, 5.5, coul);
-      texte(String(bt.cout), r.x + r.w - 43, r.y + r.h / 2, 14, coul, 'left', 'bold');
+      texte(bt.libelle, r.x + 10, r.y + r.h / 2, pf, coul, 'left', 'bold', SANS, r.w - 74);
+      if (bt.cristal) cristalIcone(ctx, r.x + r.w - 56, r.y + r.h / 2 - 1, 6, coul);
+      else goutteIcone(ctx, r.x + r.w - 56, r.y + r.h / 2 - 1, 6, coul);
+      texte(String(bt.cout), r.x + r.w - 46, r.y + r.h / 2, pf, coul, 'left', 'bold');
     }
   }
 }
@@ -3878,6 +3957,7 @@ function dessinerHUD() {
   const h = etatHorde(G.t);
   const nh = niveauNuit(G.t), sombre = nh > 0.6; // la nuit, le texte posé sur le ciel passe en clair
   dessinerBarreXP();
+  if (G.defi) texte(`Défi : ${G.defi.modif.nom}`, 22, 122, 12, ROUGE, 'left', 'italic bold', SERIF);
   texte(h.horde ? 'La horde déferle !' : `Horde dans ${Math.ceil(h.dans)} s`, 22, 86, 13,
     h.horde ? (sombre ? '#ff7a66' : ROUGE) : (sombre ? '#dfe2f2' : ENCRE), 'left', 'italic bold', SERIF);
   if (nh > 0.05) {
@@ -4504,13 +4584,15 @@ async function lireClassement() {
 }
 async function inscrireScore(pseudo) {
   const sc = { pseudo, duree: Math.max(1, Math.floor(G.t)), vague: vague(G.t), plateau: BATIMENTS.map(b => b.nom).join(', '), avatar: profil.avatar || '' };
+  if (G.defi) sc.defi = G.defi.date;
   const l = lireLocal('muraille-scores', []); l.push({ ...sc, date: new Date().toISOString() }); ecrireLocal('muraille-scores', l.slice(-200));
   ecrireLocal('muraille-pseudo', pseudo);
   G.scoreInscrit = true;
   if (!classementEnLigne()) return false;
   const envoyer = corps => appelSupabase('scores', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(corps) });
   try { await envoyer(sc); return true; }
-  catch (e) { // base sans colonne avatar : on réessaie sans
+  catch (e) { // base sans colonne avatar : on réessaie sans (jamais pour un défi : il irait dans le classement général)
+    if (sc.defi) return false;
     try { const { avatar, ...sansAvatar } = sc; await envoyer(sansAvatar); return true; } catch (e2) { return false; }
   }
 }
@@ -5116,6 +5198,8 @@ function ouvrirProfil(puisJouer) {
     </div>
     <div style="font:clamp(17px,4vw,21px) Pinceau,sans-serif;text-align:center;margin:8px 0 6px">Avatars</div>
     <div data-p="grille" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px 4px"></div>
+    <div data-p="titreSucces" style="font:clamp(17px,4vw,21px) Pinceau,sans-serif;text-align:center;margin:14px 0 6px"></div>
+    <div data-p="succes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px"></div>
     <div data-p="etat" style="text-align:center;color:#8e1a20;min-height:20px;margin-top:8px;font-size:clamp(14px,3.4vw,17px)"></div>
     <div style="text-align:center;margin-top:6px"><button data-p="valider" style="font:clamp(17px,4vw,22px) Pinceau,sans-serif;padding:10px 26px;border:0;background:#c0232b;color:#f3e4cf;cursor:pointer;border-radius:4px"></button></div>
     </div></div>`;
@@ -5142,6 +5226,17 @@ function ouvrirProfil(puisJouer) {
       el('grille').append(d);
     }
   };
+  el('titreSucces').textContent = `Succès (${succes.obtenus.length} / ${SUCCES.length})`;
+  for (const sx of SUCCES) {
+    const ok = succesObtenu(sx.id); let p = [0, 1]; try { p = sx.prog(); } catch (e) { /* ignoré */ }
+    const d = document.createElement('div');
+    d.style.cssText = `padding:5px 7px;border-radius:8px;font-family:Plume,Georgia,serif;${ok ? 'background:rgba(201,150,46,.18);' : 'background:rgba(27,23,25,.05);'}`;
+    const fait = sx.partie && !ok ? '' : ` (${sx.temps ? formatTemps(Math.min(p[0], p[1])) + ' / ' + formatTemps(p[1]) : Math.min(p[0], p[1]) + ' / ' + p[1]})`;
+    d.innerHTML = `<div style="font:bold 14px Pinceau,sans-serif;color:${ok ? '#7a5410' : '#1b1719'}">${ok ? '✓ ' : ''}${sx.nom}</div>
+      <div style="font-size:12.5px;color:#5a4632;line-height:1.15">${sx.desc}${ok ? '' : fait}</div>
+      <div style="font-size:12px;color:#7a5410;margin-top:1px">+${sx.prix} pièces</div>`;
+    el('succes').append(d);
+  }
   el('stats').textContent = `Temps de jeu : ${dureeLisible(profil.tempsTotal)}  ·  Meilleure partie : ${formatTemps(meilleurePartie())}  ·  Parties : ${profil.parties}  ·  Jours : ${profil.jours}`;
   el('pseudo').value = profil.pseudo;
   el('valider').textContent = puisJouer ? 'Valider et jouer' : 'Valider';
@@ -5228,6 +5323,147 @@ async function recupererSauvegarde(saisie) {
   appliquerSauvegarde(s.donnees, s.maj);
   return '';
 }
+// =====================================================================
+//  SUCCÈS : objectifs récompensés en pièces, vérifiés chaque seconde en partie et à la fin. Annoncés par une bannière
+//  (en jeu) ou sur l'écran de fin ; la liste et la progression sont dans la fenêtre du profil.
+//  Mémorisé : 'muraille-succes' { obtenus: [ids], c: compteurs { kills, trolls, chefs, sorts, raz } }.
+// =====================================================================
+const SUCCES = [
+  { id: 'sang',      nom: 'Premier sang',        desc: 'abattre un monstre',                   prix: 5,  prog: () => [C_SUCCES().kills, 1] },
+  { id: 'chasseur',  nom: 'Chasseur',            desc: 'abattre 1 000 monstres (au total)',    prix: 15, prog: () => [C_SUCCES().kills, 1000] },
+  { id: 'extermin',  nom: 'Exterminateur',       desc: 'abattre 10 000 monstres (au total)',   prix: 40, prog: () => [C_SUCCES().kills, 10000] },
+  { id: 'trolls',    nom: 'Tueur de trolls',     desc: 'abattre 50 trolls',                    prix: 20, prog: () => [C_SUCCES().trolls, 50] },
+  { id: 'regicide',  nom: 'Régicide',            desc: 'abattre un chef de guerre',            prix: 15, prog: () => [C_SUCCES().chefs, 1] },
+  { id: 'tenir10',   nom: 'Sentinelle',          desc: 'tenir 10 minutes',                     prix: 10, prog: () => [meilleurePartie(), 600], temps: true },
+  { id: 'tenir20',   nom: 'Gardien',             desc: 'tenir 20 minutes',                     prix: 25, prog: () => [meilleurePartie(), 1200], temps: true },
+  { id: 'tenir30',   nom: 'Muraille vivante',    desc: 'tenir 30 minutes',                     prix: 50, prog: () => [meilleurePartie(), 1800], temps: true },
+  { id: 'sorts',     nom: 'Maître des sorts',    desc: 'lancer 50 sorts',                      prix: 15, prog: () => [C_SUCCES().sorts, 50] },
+  { id: 'raz',       nom: 'Vague d\'encre',      desc: 'lancer un raz-de-marée',               prix: 10, prog: () => [C_SUCCES().raz, 1] },
+  { id: 'batisseur', nom: 'Bâtisseur',           desc: 'monter un bâtiment au niveau maximum', prix: 10, prog: () => [G && BATIMENTS.some(b => G.bat[b.id] >= b.max) ? 1 : 0, 1], partie: true },
+  { id: 'imperial',  nom: 'Garde impériale',     desc: 'obtenir les archers impériaux',        prix: 20, prog: () => [G && archersImperiaux() ? 1 : 0, 1], partie: true },
+  { id: 'sansrep',   nom: 'Pierre brute',        desc: 'tenir 10 minutes sans réparer',        prix: 25, prog: () => [G && !G.reparations ? Math.floor(G.t) : 0, 600], partie: true, temps: true },
+  { id: 'alliances', nom: 'Diplomate',           desc: 'jouer avec 3 alliances actives',       prix: 10, prog: () => [G && G.alliances ? G.alliances.size : 0, 3], partie: true },
+  { id: 'cartes',    nom: 'Collectionneur',      desc: 'débloquer 6 cartes',                   prix: 20, prog: () => [cartesDebloquees.size, 6] },
+  { id: 'defi',      nom: 'Défi relevé',         desc: 'tenir 1 minute dans un défi du jour',  prix: 15, prog: () => [defisReleves(), 1] },
+  { id: 'fidele',    nom: 'Fidèle',              desc: 'jouer 7 jours différents',             prix: 20, prog: () => [profil.jours, 7] },
+];
+let succes = Object.assign({ obtenus: [], c: {} }, lireLocal('muraille-succes', {}));
+const C_SUCCES = () => Object.assign({ kills: 0, trolls: 0, chefs: 0, sorts: 0, raz: 0 }, succes.c);
+function compterSucces(cle, n = 1) { succes.c[cle] = (succes.c[cle] || 0) + n; }
+function sauverSucces() { ecrireLocal('muraille-succes', succes); }
+const succesObtenu = id => succes.obtenus.includes(id);
+// vérifie tous les succès ; ceux qui viennent d'être obtenus rapportent leurs pièces et sont annoncés
+function verifierSucces() {
+  const nouveaux = [];
+  for (const s of SUCCES) {
+    if (succesObtenu(s.id)) continue;
+    let p; try { p = s.prog(); } catch (e) { continue; }
+    if (p[0] >= p[1]) { succes.obtenus.push(s.id); pieces += s.prix; nouveaux.push(s); }
+  }
+  if (nouveaux.length) {
+    sauverSucces(); sauverPieces();
+    if (ecran === 'jeu' && G && !G.effondrement) banniere(`Succès : ${nouveaux.map(s => s.nom).join(', ')} (+${nouveaux.reduce((t, s) => t + s.prix, 0)} pièces)`, ROUGE);
+    if (G) G.succesNouveaux = [...(G.succesNouveaux || []), ...nouveaux];
+  }
+  return nouveaux;
+}
+// =====================================================================
+//  DÉFI DU JOUR : le même pour tout le monde (tiré de la date) : 4 cartes imposées (une par famille, même verrouillées)
+//  et une règle spéciale. Badge en haut à droite de l'accueil → fenêtre (plateau, règle, meilleur temps, classement du
+//  jour) → « Relever le défi ». Le premier défi d'au moins 1 minute de la journée rapporte DEFI_PRIX pièces.
+//  Les scores de défi vont dans un classement du jour à part (colonne `defi`, classement/defis.sql) ; ils ne comptent
+//  pas pour le record. Mémorisé : 'muraille-defis' { 'AAAA-MM-JJ': meilleur temps }.
+// =====================================================================
+const MODIFS_DEFI = [
+  { id: 'sansRep',      nom: 'Pierre brute',     desc: 'la muraille ne peut pas être réparée' },
+  { id: 'encreRare',    nom: 'Encre rare',       desc: 'les monstres rapportent 30 % d\'encre en moins' },
+  { id: 'murFragile',   nom: 'Muraille fragile', desc: 'la muraille a 40 % de PV en moins' },
+  { id: 'rapides',      nom: 'Hordes pressées',  desc: 'les monstres avancent 25 % plus vite' },
+  { id: 'sansHeritage', nom: 'Sans héritage',    desc: 'les bonus d\'Héritage ne comptent pas' },
+];
+const DEFI_PRIX = 10;
+let defiDemande = null;
+const dateDefi = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function defiDuJour(date = dateDefi()) {
+  let h = 2166136261; for (const ch of date) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const alea = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const plateau = {}; for (const fa of FAMILLES) plateau[fa.id] = fa.cartes[Math.floor(alea() * fa.cartes.length)];
+  return { date, plateau, modif: MODIFS_DEFI[Math.floor(alea() * MODIFS_DEFI.length)] };
+}
+const defiModif = id => !!(G && G.defi && G.defi.modif.id === id);
+let resultatsDefis = lireLocal('muraille-defis', {});
+function lancerDefi() {
+  const d = defiDuJour(), sauve = { ...PLATEAU };
+  defiDemande = d; Object.assign(PLATEAU, d.plateau); composerPlateau(true); Object.assign(PLATEAU, sauve); // le plateau habituel reste intact
+  lancerPartie();
+}
+// fin d'une partie de défi : meilleur temps du jour, récompense du premier défi relevé
+function finDefi() {
+  const d = G.defi.date, avant = resultatsDefis[d];
+  resultatsDefis[d] = Math.max(avant || 0, Math.round(G.t));
+  if (avant === undefined && G.t >= 60) { pieces += DEFI_PRIX; sauverPieces(); G.defiRecompense = DEFI_PRIX; }
+  ecrireLocal('muraille-defis', resultatsDefis);
+}
+const defisReleves = () => Object.values(resultatsDefis).filter(t => t >= 60).length;
+
+// --- badge en haut à droite de l'accueil
+const BADGE_DEFI = { x: W - 12 - 200, y: 12, w: 200, h: 64 };
+function dessinerBadgeDefi() {
+  const B = BADGE_DEFI, survol = dedans(souris, B), d = defiDuJour(), fait = resultatsDefis[d.date] >= 60;
+  ctx.save(); ctx.fillStyle = survol ? 'rgba(241,232,216,0.95)' : 'rgba(241,232,216,0.78)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(B.x, B.y, B.w, B.h, 32) : ctx.rect(B.x, B.y, B.w, B.h); ctx.fill();
+  if (survol) { ctx.strokeStyle = ROUGE; ctx.lineWidth = 2; ctx.stroke(); }
+  ctx.fillStyle = fait ? '#2f6b2a' : ROUGE; ctx.beginPath(); ctx.arc(B.x + B.w - 32, B.y + 32, 26, 0, 7); ctx.fill();
+  ctx.restore();
+  texte(fait ? '✓' : String(new Date().getDate()), B.x + B.w - 32, B.y + 33, fait ? 24 : 20, PAPIER, 'center', 'bold');
+  texte('Défi du jour', B.x + B.w - 66, B.y + 25, 17, ENCRE, 'right', 'bold');
+  texte(d.modif.nom, B.x + B.w - 66, B.y + 45, 12, '#7a6a55', 'right', 'italic', SERIF, B.w - 80);
+}
+// --- fenêtre du défi (HTML, comme le classement)
+let defiOuvert = false, fenetreDefi = null;
+function ouvrirDefi() {
+  const d = defiDuJour(), f = document.createElement('div');
+  const jour = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  f.style.cssText = 'position:fixed;inset:0;background:rgba(27,23,25,.38);display:flex;justify-content:center;align-items:flex-start;padding-top:4vh;z-index:10';
+  const cartes = FAMILLES.map(fa => { const id = d.plateau[fa.id], ic = iconeCartePrep(id); const c = creerCanvas(96, 96), k = c.getContext('2d');
+    k.drawImage(fondLavisCercle(46), 0, 0, 96, 96); const e = Math.min(64 / ic.width, 64 / ic.height); k.drawImage(ic, 48 - ic.width * e / 2, 48 - ic.height * e / 2, ic.width * e, ic.height * e);
+    k.lineWidth = 3; k.strokeStyle = ENCRE; k.beginPath(); k.arc(48, 48, 46, 0, 7); k.stroke();
+    return `<div style="text-align:center;width:22%"><img src="${c.toDataURL()}" style="width:min(18vw,74px)"><div style="font:bold clamp(12px,3vw,14px) Pinceau,sans-serif">${batimentDe(id).nom}</div><div style="font-size:11px;color:#7a6a55">${fa.nom}</div></div>`; }).join('');
+  const mien = resultatsDefis[d.date];
+  f.innerHTML = `<div data-d="carte" style="position:relative;width:min(98vw,540px);background:center/100% 100% no-repeat;padding:30px 36px 40px;box-sizing:border-box;color:#1b1719;font-family:Plume,Georgia,serif"><div style="max-height:calc(90vh - 70px);overflow:auto;scrollbar-width:none">
+    <button data-d="fermer" aria-label="Fermer" style="position:absolute;top:22px;right:30px;width:38px;height:38px;border:0;background:transparent;font:26px Pinceau,sans-serif;color:#1b1719;cursor:pointer;line-height:1">✕</button>
+    <div style="font:clamp(24px,6vw,32px) Pinceau,sans-serif;text-align:center;margin:0 40px">Défi du jour</div>
+    <div style="text-align:center;color:#7a6a55;font-size:clamp(14px,3.4vw,17px)">${jour}</div>
+    <div style="height:4px;width:40%;margin:6px auto 12px;background:#c0232b;border-radius:3px"></div>
+    <div style="text-align:center;font-size:clamp(14px,3.4vw,17px);margin-bottom:6px">Plateau imposé (même les cartes verrouillées) :</div>
+    <div style="display:flex;justify-content:space-around">${cartes}</div>
+    <div style="text-align:center;margin:12px 0 4px;font:clamp(17px,4vw,21px) Pinceau,sans-serif;color:#c0232b">${d.modif.nom}</div>
+    <div style="text-align:center;font-size:clamp(15px,3.6vw,18px)">${d.modif.desc}</div>
+    <div style="text-align:center;font-size:clamp(14px,3.4vw,16px);color:#5a4632;margin-top:8px">${mien ? `Votre meilleur temps aujourd'hui : ${formatTemps(mien)}` : `Premier défi relevé du jour (1 min au moins) : +${DEFI_PRIX} pièces`}</div>
+    <div style="font:clamp(16px,3.8vw,19px) Pinceau,sans-serif;text-align:center;margin:14px 0 4px">Classement du jour</div>
+    <div data-d="liste" style="font-size:clamp(14px,3.4vw,17px)">Chargement…</div>
+    <div style="text-align:center;margin-top:14px"><button data-d="relever" style="font:clamp(18px,4.2vw,23px) Pinceau,sans-serif;padding:10px 28px;border:0;background:#c0232b;color:#f3e4cf;cursor:pointer;border-radius:4px">Relever le défi</button></div>
+    </div></div>`;
+  const el = n => f.querySelector(`[data-d="${n}"]`), carte = el('carte');
+  new ResizeObserver(() => { const w = Math.round(carte.offsetWidth), h = Math.round(carte.offsetHeight); if (w && h && carte.dataset.taille !== `${w}x${h}`) { carte.dataset.taille = `${w}x${h}`; carte.style.backgroundImage = `url(${papierFondu(w, h, 56).toDataURL()})`; } }).observe(carte);
+  el('fermer').onclick = fermerDefi;
+  f.addEventListener('pointerdown', ev => { if (ev.target === f) fermerDefi(); });
+  el('relever').onclick = () => { fermerDefi(); if (!profil.pseudo) ouvrirProfil(false); else lancerDefi(); };
+  document.body.appendChild(f); fenetreDefi = f; defiOuvert = true;
+  // classement du jour
+  (async () => {
+    const echapper = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    let liste = null;
+    if (classementEnLigne()) try { liste = await appelSupabase(`classement_defis?select=pseudo,duree,vague,avatar&defi=eq.${d.date}&order=duree.desc&limit=10`); } catch (e) { liste = null; }
+    if (!el('liste')) return;
+    el('liste').innerHTML = !liste ? '<div style="text-align:center;color:#7a6a55">Classement du jour indisponible pour le moment.</div>'
+      : !liste.length ? '<div style="text-align:center;color:#7a6a55">Personne encore aujourd\'hui… Soyez le premier !</div>'
+      : liste.map((sc, i) => `<div style="display:flex;align-items:center;gap:8px;padding:3px 6px;border-bottom:1px solid rgba(27,23,25,.12);${sc.pseudo.toLowerCase() === (profil.pseudo || '').toLowerCase() ? 'background:rgba(192,35,43,.12);' : ''}">
+          <div style="width:24px;text-align:center;font:16px Pinceau,sans-serif">${i + 1}</div><img src="${imageAvatarClassement(sc.avatar)}" style="width:32px;height:32px">
+          <div style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${echapper(sc.pseudo)}</div><div style="font:16px Pinceau,sans-serif">${formatTemps(sc.duree)}</div></div>`).join('');
+  })();
+}
+function fermerDefi() { if (fenetreDefi && fenetreDefi.parentNode) fenetreDefi.remove(); fenetreDefi = null; defiOuvert = false; }
 function dessinerAccueil() {
   const t = performance.now() / 1000;
   if (imageMenu && !sousMenu) {
@@ -5236,6 +5472,7 @@ function dessinerAccueil() {
     texte('Défendez la muraille contre les hordes.', W / 2, 340, 18, ENCRE, 'center', 'italic', SERIF);
     dessinerMenuImage();
     dessinerBadgeProfil();
+    dessinerBadgeDefi();
     if (heritageOuvert) dessinerHeritage();
     return;
   }
@@ -5261,6 +5498,7 @@ function clicAccueil(p) {
   if (heritageOuvert) { clicHeritage(p); return; }
   if (clicSousMenu(p)) return;
   if (dedans(p, BADGE_PROFIL)) { ouvrirProfil(false); return; }
+  if (dedans(p, BADGE_DEFI)) { ouvrirDefi(); return; }
   if (dedans(p, rectMenuImg(0))) { allerPreparer(); return; }
   if (dedans(p, rectMenuImg(1))) { ouvrirHeritage(false); return; }
   if (dedans(p, rectMenuImg(2))) { ouvrirClassement(false); return; }
@@ -5663,8 +5901,9 @@ function dessinerFin() {
   texte('La muraille est tombée', W / 2, 321, 34, PAPIER, 'center', 'bold');
   texte(`Vous avez tenu ${formatTemps(G.t)}  ·  vague ${vague(G.t)}`, W / 2, 400, 24, ENCRE, 'center', '', SERIF);
   texte(`${G.kills} monstres abattus · ${nombre(G.orGagne)} gouttes d'encre · ${G.cristauxGagnes} cristaux`, W / 2, 440, 18, ENCRE, 'center', 'italic', SERIF, W - 40);
-  texte(G.nouveauRecord ? 'Nouveau record !' : `Record : ${formatTemps(record)}`, W / 2, 490, 21, ROUGE, 'center', 'bold');
+  texte(G.defi ? `Défi du jour (${G.defi.modif.nom})${G.defiRecompense ? ` : relevé ! +${G.defiRecompense} pièces` : ''}` : G.nouveauRecord ? 'Nouveau record !' : `Record : ${formatTemps(record)}`, W / 2, 490, 21, ROUGE, 'center', 'bold', SANS, W - 40);
   if (G.sceauxGagnes || G.piecesGagnees) texte(`+${G.sceauxGagnes || 0} sceaux d'héritage  ·  +${G.piecesGagnees || 0} pièces (${pieces} pour débloquer des cartes)`, W / 2, 528, 16, '#2c4268', 'center', 'bold', SERIF, W - 40);
+  if (G.succesNouveaux && G.succesNouveaux.length) texte(`Succès : ${G.succesNouveaux.map(x => x.nom).join(', ')} (+${G.succesNouveaux.reduce((t, x) => t + x.prix, 0)} pièces)`, W / 2, 462, 15, '#7a5410', 'center', 'bold', SERIF, W - 40);
   if (G.avatarsNouveaux && G.avatarsNouveaux.length) texte(`Nouvel avatar débloqué : ${G.avatarsNouveaux.join(', ')} !`, W / 2, 552, 16, ROUGE, 'center', 'bold', SERIF, W - 40);
   texte(`${CLIQUEZ} pour préparer une nouvelle défense`, W / 2, 582, 21, ENCRE, 'center', 'bold');
   medaillonRetour(BTN_IDEE_FIN, 'idee', 'Une idée ?'); medaillonRetour(BTN_BUG_FIN, 'bug', 'Un bug ?');
@@ -5729,7 +5968,8 @@ function boucle(maintenant) {
       canvas.style.transform = sc > 0.3 && !G.pause ? `translate(${rand(-sc, sc).toFixed(1)}px, ${rand(-sc, sc).toFixed(1)}px)` : '';
     }
     if (!G.pause && !G.choixNiveau && !G.reliquesOuvert && !tutoActif) {
-      if (!G.effondrement) { profil.tempsTotal += dt; profil.aSauver = (profil.aSauver || 0) + dt; if (profil.aSauver > 10) { profil.aSauver = 0; sauverProfil(); } }
+      if (!G.effondrement) { profil.tempsTotal += dt; profil.aSauver = (profil.aSauver || 0) + dt; if (profil.aSauver > 10) { profil.aSauver = 0; sauverProfil(); sauverSucces(); } }
+      G.verifSucces = (G.verifSucces || 0) + dt; if (G.verifSucces > 1) { G.verifSucces = 0; verifierSucces(); }
       const n = Math.ceil(G.vitesse);
       for (let i = 0; i < n && ecran === 'jeu' && !G.choixNiveau; i++) mettreAJour(dt * G.vitesse / n);
     }

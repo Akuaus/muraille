@@ -340,6 +340,35 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   survol) ; bandes alternées en lavis aux extrémités estompées.
 - Remarque : ces bonus rendent le classement moins équitable entre anciens et nouveaux joueurs.
 
+## Lot du 13/11/2026 (6, 7, 8, 9, 10, 4, 3)
+- **Sauvegarde en ligne** (`sauverEnLigne`, `chargerEnLigne`, `recupererSauvegarde`) : la progression
+  (`CLES_SAUVEGARDE` : record, sceaux, héritage, pièces, cartes, plateau, tuto, profil, pseudo, succès, défis) est
+  copiée dans Supabase sous un **code secret de 12 caractères** (`muraille-code`), toutes les 20 s si elle a changé,
+  à chaque fin de partie et quand on quitte la page. Au lancement, la copie en ligne plus récente (autre appareil) est
+  reprise. Fenêtre du profil : « Votre code : XXXX-XXXX-XXXX » + champ « Récupérer ». Base : `classement/sauvegardes.sql`
+  (table `sauvegardes` sans accès direct ; fonctions `sauver_profil` / `charger_profil` qui exigent le code).
+- **Statistiques de fin** (`dessinerStatsFin`) : sous les médaillons du bilan, « Ce qui a tenu la muraille » (5 sources
+  de dégâts en barres, `G.stats` rempli par `compterDegats` : archers, catapultes, balistes, faucons, samouraïs,
+  dragon, sorts, feu, poison, Fossé, Poudrerie) et la courbe de la muraille (`G.histoMur`, toutes les 5 s).
+- **Impacts** : secousse de l'écran (`secouer`, `G.secousse` → transform du canvas) quand un troll / chef cogne la
+  muraille, à la mort d'un chef / troll, au raz-de-marée ; éclaboussure d'encre à chaque mort (plus forte pour les
+  gros) ; **coups critiques** des flèches (`CRITIQUE` : 8 %, ×2, chiffre rouge « 24 ! »).
+- **Dojo** : bannières noires « 武 » sur la face de la muraille (`dessinerBannieresDojo` : 1 bannière, 2 dès le
+  niveau 3, pompons dorés au max). **Fossé** : tranchée d'eau d'encre devant les pieux (plus large par niveau, rides
+  animées, verdâtre avec le talent poison).
+- **Panneau au doigt** (`PB`) : plus large, boutons de 46 px, texte plus grand ; description sur 2 lignes partout.
+  **Appui long** sur une carte (0,45 s) : fiche de la carte (effet, niveau, suite, talent), qui disparaît au
+  relâchement ; à la souris, la fiche s'affiche après 0,6 s de survol (panneau fermé).
+- **Succès** (`SUCCES`, 17, `verifierSucces` chaque seconde en partie et à la fin) : récompensés en pièces, bannière
+  en jeu, ligne sur le bilan, liste et progression dans la fenêtre du profil. Compteurs (`muraille-succes`) : monstres,
+  trolls, chefs, sorts, raz-de-marée.
+- **Défi du jour** (`defiDuJour` tiré de la date) : 4 cartes imposées (même verrouillées, `composerPlateau(true)`) +
+  une règle (`MODIFS_DEFI` : sans réparation, encre −30 %, muraille −40 % PV, monstres +25 % plus vite, sans Héritage).
+  Badge en haut à droite de l'accueil → fenêtre (plateau, règle, meilleur temps, classement du jour) → « Relever le
+  défi ». Rappel de la règle dans le HUD. Pas de record ; premier défi ≥ 1 min de la journée : +10 pièces. Scores de
+  défi : colonne `defi` + vues `classement` (sans défis) et `classement_defis` (`classement/defis.sql`) ; tant que la
+  base n'a pas cette colonne, un score de défi reste sur l'appareil (jamais dans le classement général).
+
 ## Profil : pseudo et avatars (12/11/2026)
 - Avant la première partie, « Jouer » ouvre la fenêtre **Votre profil** (`ouvrirProfil(true)`, « Valider et jouer ») :
   pseudo (16 lettres, aussi utilisé pour le classement : `muraille-pseudo`) et choix d'un avatar. Ensuite accessible par
