@@ -3604,7 +3604,7 @@ function dessinerBrasiers(t) {
 // du pavillon ; une au niveau 1, deux dès le niveau 3, pompons dorés au niveau maximum. Elles ondulent un peu.
 function dessinerBannieresDojo(t) {
   const l = G.bat.dojo; if (!l) return;
-  const postes = l >= 3 ? [W / 2 - 112, W / 2 + 112] : [W / 2 - 112];
+  const postes = l >= 3 ? [W / 2 - 266, W / 2 + 266] : [W / 2 - 266]; // aux deux bouts de la face, hors de la plaque de vie
   for (const [k, x] of postes.entries()) {
     const y = murHaut(x) + 10, w = 26, h = 46 + Math.min(l, 5) * 2, o = Math.sin(t * 1.6 + k * 2) * 1.6;
     ctx.save();

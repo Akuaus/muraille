@@ -353,7 +353,7 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 - **Impacts** : secousse de l'écran (`secouer`, `G.secousse` → transform du canvas) quand un troll / chef cogne la
   muraille, à la mort d'un chef / troll, au raz-de-marée ; éclaboussure d'encre à chaque mort (plus forte pour les
   gros) ; **coups critiques** des flèches (`CRITIQUE` : 8 %, ×2, chiffre rouge « 24 ! »).
-- **Dojo** : bannières noires « 武 » sur la face de la muraille (`dessinerBannieresDojo` : 1 bannière, 2 dès le
+- **Dojo** : bannières noires « 武 » aux deux bouts de la face de la muraille (`dessinerBannieresDojo` : 1 bannière, 2 dès le
   niveau 3, pompons dorés au max). **Fossé** : tranchée d'eau d'encre devant les pieux (plus large par niveau, rides
   animées, verdâtre avec le talent poison).
 - **Panneau au doigt** (`PB`) : plus large, boutons de 46 px, texte plus grand ; description sur 2 lignes partout.
@@ -368,6 +368,9 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   défi ». Rappel de la règle dans le HUD. Pas de record ; premier défi ≥ 1 min de la journée : +10 pièces. Scores de
   défi : colonne `defi` + vues `classement` (sans défis) et `classement_defis` (`classement/defis.sql`) ; tant que la
   base n'a pas cette colonne, un score de défi reste sur l'appareil (jamais dans le classement général).
+- **Scripts  et  exécutés le 13/11/2026** et vérifiés (sauvegarde / chargement par code,
+  mauvais code → rien, lecture directe de la table → rien ; score de défi seulement dans ) ; données
+  de test effacées.
 
 ## Profil : pseudo et avatars (12/11/2026)
 - Avant la première partie, « Jouer » ouvre la fenêtre **Votre profil** (`ouvrirProfil(true)`, « Valider et jouer ») :
