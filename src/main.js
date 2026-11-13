@@ -3630,12 +3630,12 @@ function dessinerMortierSprite(m, i) {
 }
 // ---------------------------------------------------------------------
 //  Boulet des mortiers (assets/boulet-dragon.webp, planche du joueur : 8 images de 250 px, fond transparent) : une
-//  tête de dragon de feu suivie d'une traînée de fumée. Pour rester discret : petit (30 px de long au pied de la
+//  tête de dragon de feu suivie d'une traînée de fumée. Pour rester discret : 46 px de long au pied de la
 //  muraille, plus petit au loin), légèrement transparent et adouci (moins saturé), sans l'explosion de départ (le
 //  mortier a déjà sa flamme). La tête pointe dans le sens du vol (montée puis descente) ; vers la gauche, l'image est
 //  retournée. Images 3 → 5 au départ, puis 5 ↔ 7 en vol. Repli : le boulet d'encre dessiné par le code.
 // ---------------------------------------------------------------------
-const BOULET = { src: 'assets/boulet-dragon.webp', images: 8, longueur: 30, opacite: 0.9, saturation: 0.75 };
+const BOULET = { src: 'assets/boulet-dragon.webp', images: 8, longueur: 46, opacite: 0.92, saturation: 0.78 };
 let planchesBoulet = null;
 { const img = new Image(); img.onload = () => { try { planchesBoulet = preparerBoulet(img); } catch (e) { planchesBoulet = null; } }; img.src = BOULET.src; }
 function preparerBoulet(img) {
