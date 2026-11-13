@@ -309,6 +309,20 @@ const prixCarte = id => PRIX_CARTE[id] || 0;
 let MODE_DEV = false;
 { const q = new URLSearchParams(location.search).get('dev');
   try { if (q === '1' || q === '0') localStorage.setItem('muraille-dev', q); MODE_DEV = localStorage.getItem('muraille-dev') === '1'; } catch (e) { MODE_DEV = q === '1'; } }
+// En partie (mode développeur) : encre et cristaux à volonté ; « tout au maximum » (bâtiments, talents, troupes et
+// améliorations de niveau) en touchant l'étiquette MODE DEV ou Ctrl+Maj+M ; un niveau de plus : Ctrl+Maj+L (ou l'étiquette).
+const RECT_MODE_DEV = { x: W / 2 - 70, y: 120, w: 140, h: 44 }; // sous le compteur, au centre (dans le ciel)
+function devToutAuMax() {
+  if (!G) return;
+  G.or = Math.max(G.or, 1e7); G.cristaux = Math.max(G.cristaux, 1e5);
+  BATIMENTS.forEach((b, i) => { for (let k = 0; k < 20 && G.bat[b.id] < b.max; k++) ameliorer(i); });
+  for (const b of BATIMENTS) if (TALENTS[b.id] && !G.talents[b.id]) acheterTalent(b.id);
+  for (const b of BATIMENTS) { const a = ACTION_DE[b.id] && ACTIONS[ACTION_DE[b.id]]; if (a) for (let k = 0; k < 30 && a.dispo() && ACTION_DE[b.id] !== 'troc'; k++) agir(a); }
+  for (const a of AMELIORATIONS) while (nv(a.id) < a.max) { G.amelio[a.id] = nv(a.id) + 1; if (a.appliquer) a.appliquer(); }
+  G.mur.pv = G.mur.max;
+  banniere('Mode dev : tout au maximum', ROUGE);
+}
+function devNiveau() { if (G) gagnerXP(xpPourNiveau(G.niveau) + 1); }
 function basculerModeDev() { MODE_DEV = !MODE_DEV; try { localStorage.setItem('muraille-dev', MODE_DEV ? '1' : '0'); } catch (e) { /* ignoré */ } }
 const debloque = id => MODE_DEV || !prixCarte(id) || cartesDebloquees.has(id);
 function acheterCarte(id) {
@@ -2106,6 +2120,7 @@ function tuer(e) {
 //  Mise à jour
 // ---------------------------------------------------------------------
 function mettreAJour(dt) {
+  if (MODE_DEV) { G.or = Math.max(G.or, 999999); G.cristaux = Math.max(G.cristaux, 9999); } // mode développeur : à volonté
   if (!G.histoMur) G.histoMur = [];
   if (G.t >= G.histoMur.length * 5) G.histoMur.push(clamp(G.mur.pv / G.mur.max, 0, 1));
   if (G.effondrement) { majEffondrement(dt); return; } // la partie est finie : seul le pavillon tombe
@@ -2795,6 +2810,7 @@ function clic(p) {
   if (ecran === 'preparation') { clicPreparation(p); return; }
   if (G && G.effondrement) return; // le pavillon s'effondre : plus aucune action
   if (Math.hypot(p.x - ENGRENAGE.x, p.y - ENGRENAGE.y) < ENGRENAGE.r) { basculerPause(); return; }
+  if (MODE_DEV && !G.pause && !G.choixNiveau && dedans(p, RECT_MODE_DEV)) { devToutAuMax(); devNiveau(); return; } // mode développeur
   if (tutoActif && !G.pause) { clicTuto(p); return; }
   if (DC && (G.pause || G.choixNiveau || G.reliquesOuvert)) p = { x: p.x, y: p.y - DC }; // fenêtres centrées
   if (G.reliquesOuvert && !G.pause) {
@@ -2881,6 +2897,10 @@ function apresGeste(ev) {
 addEventListener('pointerup', apresGeste);
 addEventListener('keydown', ev => {
   if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === 'd') { ev.preventDefault(); basculerModeDev(); return; } // mode développeur
+  if (MODE_DEV && ecran === 'jeu' && G && ev.ctrlKey && ev.shiftKey) {
+    if (ev.key.toLowerCase() === 'm') { ev.preventDefault(); devToutAuMax(); return; }
+    if (ev.key.toLowerCase() === 'l') { ev.preventDefault(); devNiveau(); return; }
+  }
   if (retourOuvert || classementOuvert || profilOuvert || defiOuvert) return; // on écrit (retour, pseudo) : les touches ne pilotent plus le jeu
   if (ecran === 'titre') { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); ecran = 'accueil'; } return; }
   if (ecran === 'accueil') {
@@ -6115,8 +6135,9 @@ function boucle(maintenant) {
     else if (G.reliquesOuvert) centrer(dessinerReliques);
   }
   if (MODE_DEV) { // étiquette du mode développeur
-    ctx.save(); ctx.fillStyle = 'rgba(192,35,43,0.88)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W / 2 - 52, 4, 104, 20, 10) : ctx.rect(W / 2 - 52, 4, 104, 20); ctx.fill(); ctx.restore();
-    texte('MODE DEV', W / 2, 15, 12, PAPIER, 'center', 'bold');
+    ctx.save(); ctx.fillStyle = 'rgba(192,35,43,0.88)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W / 2 - 52, 124, 104, 20, 10) : ctx.rect(W / 2 - 52, 124, 104, 20); ctx.fill(); ctx.restore();
+    texte('MODE DEV', W / 2, 135, 12, PAPIER, 'center', 'bold');
+    if (ecran === 'jeu') texte(TACTILE ? 'touchez : tout au max' : 'clic ou Ctrl+Maj+M : tout au max · Ctrl+Maj+L : niveau', W / 2, 155, 11, ROUGE, 'center', 'italic bold', SERIF);
   }
   requestAnimationFrame(boucle);
 }

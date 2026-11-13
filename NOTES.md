@@ -425,6 +425,9 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 - Toutes les cartes débloquées (`debloque` → vrai), sans dépenser de pièces ni modifier la sauvegarde. Aucun score
   inscrit au classement, sauvegarde en ligne coupée. Étiquette « MODE DEV » en haut de l'écran.
 - Activer : adresse `?dev=1` (couper : `?dev=0`), ou Ctrl+Maj+D ; mémorisé dans `muraille-dev`.
+- En partie : encre (999 999) et cristaux (9 999) à volonté ; **tout au maximum** (`devToutAuMax` : bâtiments, talents,
+  troupes et engins, les 19 améliorations de niveau) + un niveau en touchant l'étiquette « MODE DEV » (sous le
+  compteur) ou Ctrl+Maj+M ; un niveau de plus : Ctrl+Maj+L (`devNiveau`).
 
 ## Contrôles
 - Clic sur une carte : ouvre son panneau (améliorer + action : recruter / catapulte / réparer)
