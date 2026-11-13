@@ -353,6 +353,8 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
 - **Impacts** : secousse de l'écran (`secouer`, `G.secousse` → transform du canvas) quand un troll / chef cogne la
   muraille, à la mort d'un chef / troll, au raz-de-marée ; éclaboussure d'encre à chaque mort (plus forte pour les
   gros) ; **coups critiques** des flèches (`CRITIQUE` : 8 %, ×2, chiffre rouge « 24 ! »).
+  Amélioration de niveau **Main sûre** (`critique`, max 5) : +4 % de chance et +0,25 au multiplicateur par niveau
+  (`chanceCritique`, `multCritique` ; au max 28 % de critiques à ×3,25).
 - **Dojo** : bannières noires « 武 » aux deux bouts de la face de la muraille (`dessinerBannieresDojo` : 1 bannière, 2 dès le
   niveau 3, pompons dorés au max). **Fossé** : tranchée d'eau d'encre devant les pieux (plus large par niveau, rides
   animées, verdâtre avec le talent poison).

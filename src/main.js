@@ -134,6 +134,8 @@ const POSTES_CATAS = [150, W - 150, 255, W - 255];
 
 const ARCHER = { degats: 9, recharge: 1.0, portee: 430 };
 const CRITIQUE = { chance: 0.08, mult: 2 }; // flèches : coup critique (dégâts doublés, chiffre rouge)
+// amélioration de niveau « Main sûre » : +4 % de chance et +0,25 au multiplicateur par niveau (max 5 : 28 %, ×3,25)
+const chanceCritique = () => CRITIQUE.chance + 0.04 * nv('critique'), multCritique = () => CRITIQUE.mult + 0.25 * nv('critique');
 // zone = rayon d'impact au pied du mur ; il rétrécit au loin avec la perspective (×0,2 à l'horizon)
 const CATAPULTE = { degats: 45, recharge: 4.5, zone: 85, vol: 1.2 };
 
@@ -465,6 +467,7 @@ const AMELIORATIONS = [
   { id: 'pointes',  nom: 'Pointes acérées',   desc: 'Dégâts des flèches +10 %', max: 8, icone: 'arc' },
   { id: 'faucon',   nom: 'Œil de faucon',     desc: 'Portée des archers +7 %', max: 4, icone: 'oeil' },
   { id: 'volee',    nom: 'Volée double',      desc: '10 % de chance de tirer une seconde flèche', max: 5, icone: 'arc' },
+  { id: 'critique', nom: 'Main sûre',         desc: 'Flèches : coups critiques +4 % de chance et +25 % plus forts', max: 5, icone: 'oeil' },
   { id: 'ricochet', nom: 'Ricochet',          desc: '17 % de chance qu\'une flèche rebondisse sur un monstre voisin', max: 3, icone: 'arc' },
   { id: 'recrues',  nom: 'Recrues',           desc: '+1 archer maximum à la caserne', max: 6, icone: 'arc' },
   { id: 'mortiers', nom: 'Mortiers lourds',   desc: 'Dégâts des engins de siège +17 %', max: 4, icone: 'cata', dispo: () => G.bat.atelier > 0 || G.bat.balistes > 0 || G.bat.poudrerie > 0 || G.bat.pagode > 0 },
@@ -2268,7 +2271,7 @@ function mettreAJour(dt) {
     let crit = false;
     const dx = cible.x - p.x, dy = centreY(cible) - p.y, d = Math.hypot(dx, dy) || 1, ec = seconde ? 7 : 0;
     G.fleches.push({ x: p.x + Math.sign(dx) * 10 + ec, y: p.y - 30 - ec, vx: dx / d * 700, vy: dy / d * 700, cible,
-      degats: ARCHER.degats * md * (1 + 0.1 * nv('pointes')) * (archersImperiaux() ? IMPERIAL.bonus : 1) * (Math.random() < CRITIQUE.chance ? (crit = true, CRITIQUE.mult) : 1), vie: 1.2, feu: G.feu, crit });
+      degats: ARCHER.degats * md * (1 + 0.1 * nv('pointes')) * (archersImperiaux() ? IMPERIAL.bonus : 1) * (Math.random() < chanceCritique() ? (crit = true, multCritique()) : 1), vie: 1.2, feu: G.feu, crit });
     if (!seconde) Bruitages.jouer(G.feu ? 'flecheFeu' : 'fleche', p.x, 0.5);
   };
   G.archers.forEach((a, i) => {
