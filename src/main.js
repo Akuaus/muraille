@@ -300,7 +300,17 @@ if (!Array.isArray(cartesDebloquees)) { // première fois : les cartes déjà d�
 cartesDebloquees = new Set(cartesDebloquees);
 function sauverPieces() { try { localStorage.setItem('muraille-pieces', String(pieces)); localStorage.setItem('muraille-cartes', JSON.stringify([...cartesDebloquees])); } catch (e) { /* ignoré */ } }
 const prixCarte = id => PRIX_CARTE[id] || 0;
-const debloque = id => !prixCarte(id) || cartesDebloquees.has(id);
+// ---------------------------------------------------------------------
+//  MODE DÉVELOPPEUR : toutes les cartes débloquées (sans dépenser de pièces ni toucher à la sauvegarde). Pour ne pas
+//  fausser le classement, aucun score n'est inscrit et la sauvegarde en ligne est coupée tant qu'il est actif.
+//  Activer : adresse ?dev=1 (?dev=0 pour couper) ou Ctrl+Maj+D ; il reste actif d'une partie à l'autre
+//  (localStorage 'muraille-dev'). Une étiquette « MODE DEV » s'affiche en haut de l'écran.
+// ---------------------------------------------------------------------
+let MODE_DEV = false;
+{ const q = new URLSearchParams(location.search).get('dev');
+  try { if (q === '1' || q === '0') localStorage.setItem('muraille-dev', q); MODE_DEV = localStorage.getItem('muraille-dev') === '1'; } catch (e) { MODE_DEV = q === '1'; } }
+function basculerModeDev() { MODE_DEV = !MODE_DEV; try { localStorage.setItem('muraille-dev', MODE_DEV ? '1' : '0'); } catch (e) { /* ignoré */ } }
+const debloque = id => MODE_DEV || !prixCarte(id) || cartesDebloquees.has(id);
 function acheterCarte(id) {
   if (debloque(id) || pieces < prixCarte(id)) return false;
   pieces -= prixCarte(id); cartesDebloquees.add(id); sauverPieces(); return true;
@@ -2435,7 +2445,8 @@ function mettreAJour(dt) {
     setTimeout(() => sauverEnLigne(true), 1500); // après l'inscription du score
     G.avatarsNouveaux = AVATARS.filter(a => avatarDebloque(a) && G.avatarsAvant && !G.avatarsAvant.has(a.id)).map(a => a.nom);
     // le score est inscrit tout seul au classement, sous le pseudo du profil (parties d'au moins 10 s)
-    if (profil.pseudo && G.t >= 10) {
+    if (MODE_DEV) G.inscription = 'dev';
+    else if (profil.pseudo && G.t >= 10) {
       G.inscription = 'en cours';
       const partie = G;
       inscrireScore(profil.pseudo).then(ok => { partie.inscription = ok ? 'en ligne' : 'local'; }, () => { partie.inscription = 'local'; });
@@ -2869,6 +2880,7 @@ function apresGeste(ev) {
 }
 addEventListener('pointerup', apresGeste);
 addEventListener('keydown', ev => {
+  if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === 'd') { ev.preventDefault(); basculerModeDev(); return; } // mode développeur
   if (retourOuvert || classementOuvert || profilOuvert || defiOuvert) return; // on écrit (retour, pseudo) : les touches ne pilotent plus le jeu
   if (ecran === 'titre') { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); ecran = 'accueil'; } return; }
   if (ecran === 'accueil') {
@@ -4699,6 +4711,7 @@ async function lireClassement() {
   } catch (e) { return { liste: classementLocal(), enLigne: false, erreur: true }; }
 }
 async function inscrireScore(pseudo) {
+  if (MODE_DEV) return false; // mode développeur : rien au classement
   const sc = { pseudo, duree: Math.max(1, Math.floor(G.t)), vague: vague(G.t), plateau: BATIMENTS.map(b => b.nom).join(', '), avatar: profil.avatar || '' };
   if (G.defi) sc.defi = G.defi.date;
   const l = lireLocal('muraille-scores', []); l.push({ ...sc, date: new Date().toISOString() }); ecrireLocal('muraille-scores', l.slice(-200));
@@ -5404,6 +5417,7 @@ function nouveauCode() {
 const codeLisible = c => c ? c.match(/.{1,4}/g).join('-') : '';
 function collecterSauvegarde() { const d = {}; for (const k of CLES_SAUVEGARDE) { const v = lireBrut(k); if (v !== null) d[k] = v; } return d; }
 async function sauverEnLigne(force) {
+  if (MODE_DEV) return; // mode développeur : la sauvegarde en ligne est coupée
   if (!classementEnLigne() || !profil.pseudo) return;
   if (!codeSauvegarde) { codeSauvegarde = nouveauCode(); ecrireBrut('muraille-code', codeSauvegarde); }
   const donnees = collecterSauvegarde(), texteD = JSON.stringify(donnees);
@@ -6030,7 +6044,7 @@ function dessinerBilanFin() {
   medaillonRetour(BTN_IDEE_FIN, 'idee', 'Une idée ?'); medaillonRetour(BTN_BUG_FIN, 'bug', 'Un bug ?');
   medaillonRetour(BTN_CLASSEMENT_FIN, 'classement', G.scoreInscrit ? 'Classement' : 'Inscrire mon score');
   if (G.inscription) texte({ 'en cours': 'Inscription au classement…', 'en ligne': `Score inscrit au classement mondial (${profil.pseudo}) ✓`,
-    local: 'Score gardé sur cet appareil (classement en ligne injoignable)' }[G.inscription], W / 2, 614, 14, G.inscription === 'en ligne' ? '#2f6b2a' : '#7a6a55', 'center', 'italic bold', SERIF, W - 40);
+    local: 'Score gardé sur cet appareil (classement en ligne injoignable)', dev: 'Mode dev : score non inscrit au classement' }[G.inscription], W / 2, 614, 14, G.inscription === 'en ligne' ? '#2f6b2a' : '#7a6a55', 'center', 'italic bold', SERIF, W - 40);
   dessinerStatsFin();
   if (heritageOuvert) dessinerHeritage();
 }
@@ -6099,6 +6113,10 @@ function boucle(maintenant) {
     else if (tutoActif) dessinerTuto();
     else if (G.choixNiveau) centrer(dessinerChoixNiveau);
     else if (G.reliquesOuvert) centrer(dessinerReliques);
+  }
+  if (MODE_DEV) { // étiquette du mode développeur
+    ctx.save(); ctx.fillStyle = 'rgba(192,35,43,0.88)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W / 2 - 52, 4, 104, 20, 10) : ctx.rect(W / 2 - 52, 4, 104, 20); ctx.fill(); ctx.restore();
+    texte('MODE DEV', W / 2, 15, 12, PAPIER, 'center', 'bold');
   }
   requestAnimationFrame(boucle);
 }

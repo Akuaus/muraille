@@ -421,6 +421,11 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   dès qu'un talent est achetable) · hordes (8 s avant) · nuit.
 - Mémorisé : localStorage `muraille-tuto` (liste des conseils vus, ou 'fini'). Options → « Revoir le tutoriel ».
 
+## Mode développeur (13/11/2026)
+- Toutes les cartes débloquées (`debloque` → vrai), sans dépenser de pièces ni modifier la sauvegarde. Aucun score
+  inscrit au classement, sauvegarde en ligne coupée. Étiquette « MODE DEV » en haut de l'écran.
+- Activer : adresse `?dev=1` (couper : `?dev=0`), ou Ctrl+Maj+D ; mémorisé dans `muraille-dev`.
+
 ## Contrôles
 - Clic sur une carte : ouvre son panneau (améliorer + action : recruter / catapulte / réparer)
 - Pastille rouge sur une carte : quelque chose y est achetable
