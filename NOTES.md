@@ -236,6 +236,16 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
     le libellé = couper) ; mémorisé (localStorage `muraille-bruitages`, `muraille-bruitages-volume`).
 
 ## Mobile (téléphone, tablette)
+- **Tout l'écran (13/11/2026) : la vallée s'allonge.** `index.html` choisit la hauteur du jeu au chargement : sur un
+  écran tactile en portrait plus allongé que 3:4, 720 × (720 × hauteur/largeur), au plus 1 600 ; sinon 720 × 960.
+  Test sur ordinateur : `index.html?hauteur=1500`. Dans le jeu, `D = H − 960` : muraille, socle, calque des taches et
+  cartes descendent de D (`MUR_Y`, `SOCLE_Y`, `CHAMP_H`, `OY_MUR`, `CARTE_Y`), l'horizon et le compteur restent en
+  haut. Le trajet des monstres dure autant (compensation de profondeur déjà calculée, vérifié : 15,1 s / 15,2 s) ;
+  la portée des archers grandit dans la même proportion. Menus et fenêtres (titre, accueil, préparation, pause, choix
+  de niveau, reliques, bilan de fin) gardent leur mise en page 720 × 960, centrée (`centrer`, décalage `DC = D/2`,
+  souris et clics décalés d'autant ; le bouton pause reste en haut) ; les voiles couvrent tout l'écran.
+- Tremblements de l'écran retirés (`secouer` ne fait plus rien) à la demande du joueur ; seul reste celui de
+  l'effondrement du pavillon en fin de partie.
 - **Jouer sur le téléphone** : lancer le serveur sur le PC (`jouer.cmd`), puis ouvrir sur le téléphone, connecté au
   même Wi-Fi, `http://<adresse du PC>:8080/muraille/` (ex. `http://192.168.1.59:8080/muraille/`). Le serveur écoute
   déjà sur toutes les interfaces ; Windows peut demander d'autoriser Node.js dans le pare-feu (réseau privé).

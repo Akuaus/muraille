@@ -6,7 +6,19 @@
 
 const canvas = document.getElementById('jeu');
 const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;   // 720 × 960
+const W = canvas.width, H = canvas.height;   // 720 × 960 (plus haut sur un téléphone allongé : voir index.html)
+// Téléphone allongé : le jeu fait 720 de large et jusqu'à 1 600 de haut. D = hauteur en plus : la vallée s'allonge
+// d'autant (la muraille, le socle et les cartes restent en bas de l'écran, l'horizon et le compteur en haut).
+// Les menus et fenêtres gardent leur mise en page 720 × 960, centrés verticalement (décalage DC).
+const D = H - 960, DC = Math.round(D / 2);
+let decalCourant = 0; // décalage vertical en cours (0, ou DC pendant le dessin d'un menu centré)
+// dessine fn dans le cadre 720 × 960 centré verticalement ; la souris est décalée d'autant pendant ce dessin
+function centrer(fn) {
+  if (!DC) return fn();
+  const brute = souris; souris = { x: brute.x, y: brute.y - DC };
+  ctx.save(); ctx.translate(0, DC); decalCourant = DC;
+  try { return fn(); } finally { ctx.restore(); decalCourant = 0; souris = brute; }
+}
 // Écran tactile (téléphone, tablette) : textes « Touchez », plein écran au premier toucher
 const TACTILE = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 const CLIQUEZ = TACTILE ? 'Touchez' : 'Cliquez';
@@ -25,10 +37,10 @@ ajusterResolution();
 addEventListener('resize', ajusterResolution);
 document.addEventListener('fullscreenchange', ajusterResolution);
 
-const MUR_Y = 708;          // haut de la muraille (au centre ; elle s'incurve vers les bords)
+const MUR_Y = 708 + D;      // haut de la muraille (au centre ; elle s'incurve vers les bords)
 const MUR_FACE = 80;        // hauteur de la face du mur
-const SOCLE_Y = 800;        // début du socle d'encre (interface)
-const CHAMP_H = 760;        // hauteur du calque des taches
+const SOCLE_Y = 800 + D;    // début du socle d'encre (interface)
+const CHAMP_H = 760 + D;    // hauteur du calque des taches
 const CRI_DUREE = 1.4;       // rugissement du chef en arrivant à la muraille (s)
 const REACTION_DUREE = 0.25; // pose « touché » d'une planche, au plus une fois toutes les ~1,2 s
 const ARRET_MUR = 22;       // les monstres s'arrêtent juste devant les créneaux (pour rester visibles)
@@ -132,7 +144,7 @@ const CAP_TROUPES = [0, 3, 5, 8, 12, 16, 20];       // archers max par niveau de
 const CAP_CATAS = [0, 1, 2, 3, 4];                  // catapultes max par niveau d'atelier
 const POSTES_CATAS = [150, W - 150, 255, W - 255];
 
-const ARCHER = { degats: 9, recharge: 1.0, portee: 430 };
+const ARCHER = { degats: 9, recharge: 1.0, portee: Math.round(430 * (MUR_Y - Y_CIEL) / (708 - Y_CIEL)) };
 const CRITIQUE = { chance: 0.08, mult: 2 }; // flèches : coup critique (dégâts doublés, chiffre rouge)
 // amélioration de niveau « Main sûre » : +4 % de chance et +0,25 au multiplicateur par niveau (max 5 : 28 %, ×3,25)
 const chanceCritique = () => CRITIQUE.chance + 0.04 * nv('critique'), multCritique = () => CRITIQUE.mult + 0.25 * nv('critique');
@@ -1252,7 +1264,7 @@ const spriteCatapulte = (function () {
   return c;
 })();
 
-const OY_MUR = 600;
+const OY_MUR = 600 + D;
 const murTex = creerCanvas(W, SOCLE_Y + 40 - OY_MUR);
 (function () {
   const c = murTex.getContext('2d'), Y = y => y - OY_MUR;
@@ -1389,7 +1401,7 @@ const sceau = (function () {
 // =====================================================================
 //  CARTES DU VILLAGE
 // =====================================================================
-const CARTE_W = 118, CARTE_H = 112, CARTE_Y = 836;
+const CARTE_W = 118, CARTE_H = 112, CARTE_Y = 836 + D;
 const rectCarte = i => ({ x: (W - (5 * CARTE_W + 4 * 12)) / 2 + i * (CARTE_W + 12), y: CARTE_Y, w: CARTE_W, h: CARTE_H });
 
 function iconeBatiment(k, id, x, y) {
@@ -2054,7 +2066,7 @@ function majTextesEncre(dt) {
   G.encreFlottante = { somme: 0, x: 0, y: 0, n: 0, minuteur: 0 };
 }
 // secousse de l'écran (décroît toute seule ; appliquée au canvas dans la boucle)
-function secouer(force) { if (G) G.secousse = Math.max(G.secousse || 0, force); }
+function secouer(force) { /* tremblements retirés à la demande du joueur (13/11/2026) */ }
 function tuer(e) {
   e.mort = true; e.fonte = 0;
   compterSucces('kills'); if (e.k === 'troll') compterSucces('trolls'); if (e.k === 'chef') compterSucces('chefs');
@@ -2638,6 +2650,8 @@ function pauseAutomatique() {
 addEventListener('blur', pauseAutomatique);
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseAutomatique(); });
 function dessinerBoutonPause() {
+  if (decalCourant) { const d = decalCourant, sv = souris; ctx.save(); ctx.translate(0, -d); decalCourant = 0; souris = { x: sv.x, y: sv.y + d };
+    try { dessinerBoutonPause(); } finally { ctx.restore(); decalCourant = d; souris = sv; } return; }
   const b = ENGRENAGE, survol = Math.hypot(souris.x - b.x, souris.y - b.y) < b.r;
   ctx.fillStyle = G.pause ? ROUGE : ENCRE;
   ctx.beginPath(); ctx.arc(b.x, b.y - (survol ? 1 : 0), b.r, 0, 7); ctx.fill();
@@ -2756,6 +2770,8 @@ let refusAnim = null;
 function refus(r) { refusAnim = { r, t: 0 }; }
 
 function clic(p) {
+  // écrans dessinés dans le cadre centré : le clic est ramené dans ce cadre (le bouton pause du jeu reste en haut)
+  if (DC && (ecran === 'titre' || ecran === 'accueil' || ecran === 'preparation' || ecran === 'fin')) p = { x: p.x, y: p.y - DC };
   if (ecran === 'fin' && heritageOuvert) { clicHeritage(p); return; }
   if (ecran === 'fin' && surMedaillon(p, BTN_IDEE_FIN)) { ouvrirRetour('idee'); return; }
   if (ecran === 'fin' && surMedaillon(p, BTN_CLASSEMENT_FIN)) { ouvrirClassement(true); return; }
@@ -2768,6 +2784,7 @@ function clic(p) {
   if (G && G.effondrement) return; // le pavillon s'effondre : plus aucune action
   if (Math.hypot(p.x - ENGRENAGE.x, p.y - ENGRENAGE.y) < ENGRENAGE.r) { basculerPause(); return; }
   if (tutoActif && !G.pause) { clicTuto(p); return; }
+  if (DC && (G.pause || G.choixNiveau || G.reliquesOuvert)) p = { x: p.x, y: p.y - DC }; // fenêtres centrées
   if (G.reliquesOuvert && !G.pause) {
     let surCarte = false;
     RELIQUES.forEach((r, i) => { const rr = rectRelique(i); if (dedans(p, rr)) { surCarte = true; if (!acheterRelique(r)) refus(rr); } });
@@ -4216,7 +4233,7 @@ function halosBraseros(t, nuit) {
   }
   ctx.restore();
 }
-function voile() { ctx.fillStyle = 'rgba(243,228,207,0.84)'; ctx.fillRect(0, 0, W, H); }
+function voile() { ctx.fillStyle = 'rgba(243,228,207,0.84)'; ctx.fillRect(0, -DC, W, H + 2 * DC); }
 
 // Barre d'expérience, juste sous la traînée « Vague N » (claire la nuit, quand elle est posée sur le ciel)
 function dessinerBarreXP() {
@@ -4847,7 +4864,7 @@ function dessinerAide() {
   const nL = lignesAide().length, hA = 104 + nL * (TACTILE ? 46 : 40) + 150;
   const R = { x: RECT_AIDE.x, y: Math.round((H - hA) / 2) - 20, w: RECT_AIDE.w, h: hA };
   // papier fondu façon lavis (comme le menu, l'Héritage et le classement), préparé une fois par taille
-  ctx.fillStyle = 'rgba(27,23,25,0.25)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(27,23,25,0.25)'; ctx.fillRect(0, -DC, W, H + 2 * DC);
   const m = 34, cle = R.w + 'x' + R.h;
   if (!fondAide || fondAide.cle !== cle) fondAide = { cle, c: papierFondu(R.w + 2 * m, R.h + 2 * m, 54) };
   ctx.drawImage(fondAide.c, R.x - m, R.y - m);
@@ -4889,13 +4906,17 @@ const decorTitre = (function () {
   return c;
 })();
 
-function dessinerDecorTitre(t) {
+// fond des écrans titre / accueil (la vallée, la muraille, le socle) : sur toute la hauteur de l'écran
+function fondTitre(t) {
   ctx.drawImage(fond, 0, 0);
   ctx.drawImage(premierPlan, 0, 0);
   ctx.drawImage(murTex, 0, OY_MUR); dessinerPavillon(0);
   drapeauxMuraille(t);
   ctx.drawImage(socle, 0, OY_SOCLE);
   brasero(262, SOCLE_Y + 2, t); brasero(W - 262, SOCLE_Y + 2, t);
+}
+// partie « titre » du décor (halo, montagnes et soleil du titre, nom du jeu) : dans le cadre centré
+function dessinerDecorTitre(t) {
   const halo = ctx.createRadialGradient(W / 2, 380, 60, W / 2, 380, 330);
   halo.addColorStop(0, 'rgba(243,228,207,0.85)'); halo.addColorStop(0.7, 'rgba(243,228,207,0.6)'); halo.addColorStop(1, 'rgba(243,228,207,0)');
   ctx.fillStyle = halo; ctx.fillRect(0, 40, W, 680);
@@ -4943,7 +4964,7 @@ let fondHeritage = null;
 const MARGE_FONDU_HERITAGE = 34;
 function dessinerHeritage() {
   const P = PANNEAU_HERITAGE, m = MARGE_FONDU_HERITAGE;
-  ctx.fillStyle = 'rgba(27,23,25,0.22)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(27,23,25,0.22)'; ctx.fillRect(0, -DC, W, H + 2 * DC);
   if (!fondHeritage || fondHeritage.h !== P.h) fondHeritage = { h: P.h, c: papierFondu(P.w + 2 * m, P.h + 2 * m, 56) };
   ctx.drawImage(fondHeritage.c, P.x - m, P.y - m);
   texte('Héritage', W / 2, P.y + 38, 32, ENCRE, 'center', 'bold');
@@ -5651,9 +5672,9 @@ function cadenas(x, y) {
 function dessinerPreparation() {
   const M = MAQUETTE_PREP, mq = maquettePrep;
   // papier
-  ctx.fillStyle = '#efe5d2'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#efe5d2'; ctx.fillRect(0, -DC, W, H + 2 * DC);
   const g = ctx.createRadialGradient(W / 2, H / 2, 200, W / 2, H / 2, 640); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(110,80,45,0.22)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = g; ctx.fillRect(0, -DC, W, H + 2 * DC);
   if (mq) ctx.drawImage(mq.haut, 0, 0);
   else { texte('Préparer la muraille', W / 2, 70, 34, ENCRE, 'center', 'bold'); texte('Choisissez vos constructions pour cette bataille.', W / 2, 130, 17, ENCRE, 'center', 'italic', SERIF); }
   const ouvert = selectionFamille !== null;
@@ -5832,7 +5853,7 @@ let fondSelection = null;
 function dessinerSelectionFamille(choisies) {
   const fa = FAMILLES[selectionFamille], P = PANNEAU_SELECTION, m = 34;
   // même papier fondu que les autres menus (pas de cadre rectangulaire)
-  ctx.fillStyle = 'rgba(27,23,25,0.3)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(27,23,25,0.3)'; ctx.fillRect(0, -DC, W, H + 2 * DC);
   if (!fondSelection) fondSelection = papierFondu(P.w + 2 * m, P.h + 2 * m, 56);
   ctx.drawImage(fondSelection, P.x - m, P.y - m);
   texte(fa.nom, W / 2, P.y + 36, 30, ENCRE, 'center', 'bold');
@@ -5897,8 +5918,9 @@ function dessinerBullePrep(entrees) {
 }
 
 let bandeauFin = null;
-function dessinerFin() {
-  dessinerJeu(); voile();
+function dessinerFin() { dessinerJeu(); centrer(dessinerBilanFin); }
+function dessinerBilanFin() {
+  voile();
   if (!bandeauFin) bandeauFin = creerBandeau(ROUGE);
   ctx.drawImage(bandeauFin, W / 2 - 300, 320 - 48);
   texte('La muraille est tombée', W / 2, 321, 34, PAPIER, 'center', 'bold');
@@ -5959,9 +5981,9 @@ let dernier = performance.now();
 function boucle(maintenant) {
   const dt = Math.min(0.05, (maintenant - dernier) / 1000);
   dernier = maintenant;
-  if (ecran === 'titre') dessinerTitre();
-  else if (ecran === 'accueil') dessinerAccueil();
-  else if (ecran === 'preparation') dessinerPreparation();
+  if (ecran === 'titre') { fondTitre(performance.now() / 1000); centrer(dessinerTitre); }
+  else if (ecran === 'accueil') { fondTitre(performance.now() / 1000); centrer(dessinerAccueil); }
+  else if (ecran === 'preparation') { if (DC) { ctx.fillStyle = '#efe5d2'; ctx.fillRect(0, 0, W, H); } centrer(dessinerPreparation); }
   else if (ecran === 'fin') dessinerFin();
   else {
     // accéléré : on découpe le pas de temps pour garder une simulation stable (pas ≤ 1/60 s environ)
@@ -5977,10 +5999,10 @@ function boucle(maintenant) {
       for (let i = 0; i < n && ecran === 'jeu' && !G.choixNiveau; i++) mettreAJour(dt * G.vitesse / n);
     }
     dessinerJeu();
-    if (G.pause) dessinerPause();
+    if (G.pause) centrer(dessinerPause);
     else if (tutoActif) dessinerTuto();
-    else if (G.choixNiveau) dessinerChoixNiveau();
-    else if (G.reliquesOuvert) dessinerReliques();
+    else if (G.choixNiveau) centrer(dessinerChoixNiveau);
+    else if (G.reliquesOuvert) centrer(dessinerReliques);
   }
   requestAnimationFrame(boucle);
 }

@@ -34,12 +34,24 @@
 <body>
   <canvas id="jeu" width="720" height="960"></canvas>
   <script>
+    // Téléphone en portrait plus allongé que 3:4 : le jeu prend toute la hauteur (720 de large, jusqu'à 1 600 de
+    // haut) ; la vallée s'allonge d'autant. Sur ordinateur, 720 × 960. Pour tester : index.html?hauteur=1500
+    (function () {
+      const c = document.getElementById('jeu'), forcee = +new URLSearchParams(location.search).get('hauteur');
+      const tactile = window.matchMedia && matchMedia('(pointer: coarse)').matches, ratio = innerHeight / innerWidth;
+      const h = forcee ? Math.max(960, Math.min(1600, Math.round(forcee))) : tactile && ratio > 1.4 ? Math.min(1600, Math.round(720 * ratio)) : 960;
+      c.height = h;
+      const largeur = `min(100vw, calc(100dvh * ${(720 / h).toFixed(4)}))`;
+      c.style.width = `min(100vw, calc(100vh * ${(720 / h).toFixed(4)}))`; c.style.width = largeur;
+    })();
+  </script>
+  <script>
     // Le jeu dessine des images au démarrage (cartes, bandeaux…) : on attend les deux polices calligraphiées
     // (au plus 2,5 s, puis on démarre quand même avec les polices de secours).
     (function () {
       // VERSION : à changer à chaque mise en ligne, pour que les navigateurs prennent les nouveaux scripts
       // (GitHub Pages les garde sinon 10 minutes en cache).
-      const VERSION = '2026-11-13d';
+      const VERSION = '2026-11-13e';
       const scripts = ['musique/combat.js', 'musique/effets.js', 'src/main.js'];
       const charger = () => (function suivant(i) {
         if (i >= scripts.length) return;
