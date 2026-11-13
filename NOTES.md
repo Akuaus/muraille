@@ -368,8 +368,8 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   défi ». Rappel de la règle dans le HUD. Pas de record ; premier défi ≥ 1 min de la journée : +10 pièces. Scores de
   défi : colonne `defi` + vues `classement` (sans défis) et `classement_defis` (`classement/defis.sql`) ; tant que la
   base n'a pas cette colonne, un score de défi reste sur l'appareil (jamais dans le classement général).
-- **Scripts  et  exécutés le 13/11/2026** et vérifiés (sauvegarde / chargement par code,
-  mauvais code → rien, lecture directe de la table → rien ; score de défi seulement dans ) ; données
+- **Scripts `sauvegardes.sql` et `defis.sql` exécutés le 13/11/2026** et vérifiés (sauvegarde / chargement par code,
+  mauvais code → rien, lecture directe de la table → rien ; score de défi seulement dans `classement_defis`) ; données
   de test effacées.
 
 ## Profil : pseudo et avatars (12/11/2026)
