@@ -133,6 +133,7 @@ const CAP_CATAS = [0, 1, 2, 3, 4];                  // catapultes max par niveau
 const POSTES_CATAS = [150, W - 150, 255, W - 255];
 
 const ARCHER = { degats: 9, recharge: 1.0, portee: 430 };
+const CRITIQUE = { chance: 0.08, mult: 2 }; // flèches : coup critique (dégâts doublés, chiffre rouge)
 // zone = rayon d'impact au pied du mur ; il rétrécit au loin avec la perspective (×0,2 à l'horizon)
 const CATAPULTE = { degats: 45, recharge: 4.5, zone: 85, vol: 1.2 };
 
@@ -1825,7 +1826,7 @@ function majPoudreEtDragon(dt, vivants) {
     b.t -= dt;
     for (const e of vivants) {
       if (e.mort || Math.hypot(e.x - b.x, (e.y - b.y) * 1.6) > b.zone) continue;
-      e.pv -= b.dps * dt; e.flambe = 0.3;
+      compterDegats('Poudrerie', b.dps * dt, e); e.pv -= b.dps * dt; e.flambe = 0.3;
       if (alliance('fumees') && Math.random() < dt) empoisonner(e);
       if (e.pv <= 0) tuer(e);
     }
@@ -1860,7 +1861,7 @@ function majPoudreEtDragon(dt, vivants) {
     if (d.trace.length > 36) d.trace.pop();
     for (const e of vivants) {
       if (e.mort || d.touches.has(e) || Math.abs(pieds(e) - d.y) > bande || Math.abs(e.x - d.x) > 30) continue;
-      d.touches.add(e); blesser(e, d.degats, 'sort');
+      d.touches.add(e); blesser(e, d.degats, 'sort', 'Dragon');
       if (Math.random() < 0.4) eclabousser(e.x, e.y, 3, 110, 1);
     }
     if ((d.dir > 0 && d.x > W + 420) || (d.dir < 0 && d.x < -420)) G.dragon = null;
@@ -1896,7 +1897,7 @@ function majUnitesPlateau(dt, vivants) {
     c.x += c.vx * dt; c.y += c.vy * dt;
     for (const e of vivants) {
       if (e.mort || c.touches.has(e)) continue;
-      if (Math.hypot(e.x - c.x, centreY(e) - c.y) < e.r * perspective(pieds(e)) + 8) { c.touches.add(e); blesser(e, c.degats, 'roc'); c.degats *= BALISTE.perte; }
+      if (Math.hypot(e.x - c.x, centreY(e) - c.y) < e.r * perspective(pieds(e)) + 8) { c.touches.add(e); blesser(e, c.degats, 'roc', 'Balistes'); c.degats *= BALISTE.perte; }
     }
     if (c.y < Y_HORIZON - 20 || c.x < -20 || c.x > W + 20 || (c.vy > 0 && c.y > MUR_Y) || c.y > H) c.fini = true;
   }
@@ -1950,7 +1951,7 @@ function majUnitesPlateau(dt, vivants) {
     const tx = fa.etat === 'chasse' ? fa.cible.x : fa.px, ty = fa.etat === 'chasse' ? centreY(fa.cible) : fa.py;
     const dx = tx - fa.x, dy = ty - fa.y, d = Math.hypot(dx, dy) || 1;
     fa.vx = dx; fa.x += dx / d * Math.min(d, vitesseF * dt); fa.y += dy / d * Math.min(d, vitesseF * dt);
-    if (fa.etat === 'chasse' && d < 12) { fa.cible.marque = G.t + FAUCON.marque; blesser(fa.cible, degatsFaucon(), 'roc'); fa.cible = null; fa.etat = 'retour'; }
+    if (fa.etat === 'chasse' && d < 12) { fa.cible.marque = G.t + FAUCON.marque; blesser(fa.cible, degatsFaucon(), 'roc', 'Faucons'); fa.cible = null; fa.etat = 'retour'; }
     else if (fa.etat === 'retour' && d < 6) { fa.etat = 'perche'; fa.cd = FAUCON.repos * rand(0.85, 1.15); fa.x = fa.px; fa.y = fa.py; }
   }
 }
@@ -2023,11 +2024,15 @@ const centreY = e => pieds(e) - e.taille * 1.1 * perspective(pieds(e));
 // vitesse apparente (px/s à l'écran) : lente au loin, rapide près du mur, ralentie par la brume
 const vitesseEcran = e => e.ty.vit * (e.elite === 'enrage' ? ELITES.enrage.vitesse : 1) * perspective(pieds(e)) * COMPENSATION_PROFONDEUR * (G.brume > 0 ? 0.5 : 1) * ralentissement(e);
 
-function blesser(e, degats, source) {
+// Statistiques de partie : dégâts réellement infligés par source (G.stats), vie de la muraille toutes les 5 s (G.histoMur)
+const NOM_SOURCE = { fleche: 'Archers', roc: 'Catapultes', sabre: 'Samouraïs', sort: 'Sorts' };
+function compterDegats(stat, v, e) { if (!G.stats) G.stats = {}; const r = Math.max(0, Math.min(v, e.pv)); G.stats[stat] = (G.stats[stat] || 0) + r; }
+function blesser(e, degats, source, stat) {
   if (e.mort) return;
   if (source === 'fleche') degats *= 1 - Math.min(0.9, e.ty.armure + (e.elite === 'blinde' ? ELITES.blinde.armure : 0)) * (G.talents.forge ? 0.5 : 1);
   if (e.marque > G.t) degats *= 1 + bonusMarque();
   if (dansAura(e)) degats *= 1 + 0.08 * G.bat.temple; // les monstres dans l'aura du temple sont vulnérables
+  compterDegats(stat || NOM_SOURCE[source] || source, degats, e);
   e.pv -= degats; e.flash = 0.12;
   if (!(e.reactionCd > 0)) { e.reaction = REACTION_DUREE; e.reactionCd = rand(1, 1.5); }
   if (source === 'fleche' && Math.random() < 0.6) eclabousser(e.x, e.y, 2, 60, 1.2, -50);
@@ -2043,8 +2048,14 @@ function majTextesEncre(dt) {
   G.textes.push({ x: ae.x / ae.n, y: ae.y / ae.n, txt: '+' + nombre(ae.somme), t: 0, encre: true });
   G.encreFlottante = { somme: 0, x: 0, y: 0, n: 0, minuteur: 0 };
 }
+// secousse de l'écran (décroît toute seule ; appliquée au canvas dans la boucle)
+function secouer(force) { if (G) G.secousse = Math.max(G.secousse || 0, force); }
 function tuer(e) {
   e.mort = true; e.fonte = 0;
+  // la mort éclabousse d'encre, plus fort pour les gros
+  const gros = e.k === 'troll' || e.k === 'chef';
+  eclabousser(e.x, e.y - e.taille * 0.4, gros ? 14 : 4, gros ? 170 : 90, gros ? 2 : 1.2, -60);
+  if (e.k === 'chef') secouer(6); else if (e.k === 'troll') secouer(2.5);
   G.kills++;
   const bonusElite = e.elite ? (e.elite === 'colosse' ? 3 : 2) : 1;
   const gain = Math.round(bonusElite * e.ty.or * (1 + 0.03 * G.t / 60) * (1 + NUIT_EFFETS.butin * niveauNuit(G.t)) * (1 + 0.2 * nv('pillage')) * (1 + 0.12 * G.bat.comptoir) * (G.talents.comptoir ? 1.25 : 1) * (e.poison > 0 && alliance('venin') ? 1.3 : 1));
@@ -2066,6 +2077,8 @@ function tuer(e) {
 //  Mise à jour
 // ---------------------------------------------------------------------
 function mettreAJour(dt) {
+  if (!G.histoMur) G.histoMur = [];
+  if (G.t >= G.histoMur.length * 5) G.histoMur.push(clamp(G.mur.pv / G.mur.max, 0, 1));
   if (G.effondrement) { majEffondrement(dt); return; } // la partie est finie : seul le pavillon tombe
   G.t += dt;
 
@@ -2148,11 +2161,11 @@ function mettreAJour(dt) {
     e.reaction = Math.max(0, (e.reaction || 0) - dt); e.reactionCd = Math.max(0, (e.reactionCd || 0) - dt);
     e.cri = Math.max(0, (e.cri || 0) - dt);
     if (e.brule > 0) { // brûlure : dégâts continus, sans armure
-      e.brule -= dt; e.pv -= FEU.dps * (1 + 0.35 * nv('braises')) * md * dt;
+      e.brule -= dt; { const v = FEU.dps * (1 + 0.35 * nv('braises')) * md * dt; compterDegats('Feu', v, e); e.pv -= v; }
       if (e.pv <= 0) { tuer(e); continue; }
     }
     if (e.poison > 0) { // poison de l'alchimiste : dégâts continus par dose, sans armure
-      e.poisonT -= dt; e.pv -= e.poison * dpsPoison() * dt;
+      e.poisonT -= dt; { const v = e.poison * dpsPoison() * dt; compterDegats('Poison', v, e); e.pv -= v; }
       if (e.poisonT <= 0) e.poison = 0;
       if (e.pv <= 0) { tuer(e); continue; }
     }
@@ -2161,7 +2174,7 @@ function mettreAJour(dt) {
       if (garde) { // retenu par un samouraï : il se bat au lieu d'avancer
         e.combat = true; e.auMur = false; e.pas += dt * 3;
         garde.pv -= e.ty.dps * dt;
-        if (alliance('ligne') && G.bat.fosse) { e.pv -= saigneeFosse() * dt; if (e.pv <= 0) { tuer(e); continue; } }
+        if (alliance('ligne') && G.bat.fosse) { compterDegats('Fossé', saigneeFosse() * dt, e); e.pv -= saigneeFosse() * dt; if (e.pv <= 0) { tuer(e); continue; } }
         if (garde.pv <= 0) tomberSamourai(garde);
         continue;
       }
@@ -2186,9 +2199,13 @@ function mettreAJour(dt) {
       }
       if (!e.criFait) { e.criFait = true; const pl = PLANCHES_MONSTRES[e.k]; if (pl && pl.lignes && pl.lignes.cri !== undefined) e.cri = CRI_DUREE; }
       e.pas += dt * 3;
-      if (G.bat.fosse) { e.pv -= saigneeFosse() * dt; if (e.pv <= 0) { tuer(e); continue; } }
+      if (G.bat.fosse) { compterDegats('Fossé', saigneeFosse() * dt, e); e.pv -= saigneeFosse() * dt; if (e.pv <= 0) { tuer(e); continue; } }
       if (alliance('enduits') && G.bat.fosse && Math.random() < dt) empoisonner(e);
       G.mur.pv -= e.ty.dps * (1 - 0.07 * nv('herses')) * (1 - 0.05 * relique('garde')) * dt;
+      if (e.k === 'troll' || e.k === 'chef') { // les gros cognent : l'écran tremble à chaque coup
+        e.coupCd = (e.coupCd || 0) - dt;
+        if (e.coupCd <= 0) { e.coupCd = e.k === 'chef' ? 1.1 : 1.5; secouer(e.k === 'chef' ? 5 : 3); }
+      }
     }
   }
   // Séparation légère. Les monstres sont triés par hauteur : chacun ne se compare qu'à ses voisins proches
@@ -2245,9 +2262,10 @@ function mettreAJour(dt) {
     return cible;
   };
   const tirer = (p, cible, seconde = false) => {
+    let crit = false;
     const dx = cible.x - p.x, dy = centreY(cible) - p.y, d = Math.hypot(dx, dy) || 1, ec = seconde ? 7 : 0;
     G.fleches.push({ x: p.x + Math.sign(dx) * 10 + ec, y: p.y - 30 - ec, vx: dx / d * 700, vy: dy / d * 700, cible,
-      degats: ARCHER.degats * md * (1 + 0.1 * nv('pointes')) * (archersImperiaux() ? IMPERIAL.bonus : 1), vie: 1.2, feu: G.feu });
+      degats: ARCHER.degats * md * (1 + 0.1 * nv('pointes')) * (archersImperiaux() ? IMPERIAL.bonus : 1) * (Math.random() < CRITIQUE.chance ? (crit = true, CRITIQUE.mult) : 1), vie: 1.2, feu: G.feu, crit });
     if (!seconde) Bruitages.jouer(G.feu ? 'flecheFeu' : 'fleche', p.x, 0.5);
   };
   G.archers.forEach((a, i) => {
@@ -2285,6 +2303,7 @@ function mettreAJour(dt) {
       if (d < f.cible.r + 4) {
         if (f.feu) f.cible.brule = FEU.duree * (1 + 0.35 * nv('braises'));
         if (G.bat.alchimiste) { f.cible.poison = Math.min(dosesPoison(), (f.cible.poison || 0) + 1); f.cible.poisonT = 4; }
+        if (f.crit && !f.cible.mort) G.textes.push({ x: f.cible.x + 4, y: f.cible.y - f.cible.taille - 8, txt: Math.round(f.degats) + ' !', t: 0, critique: true });
         blesser(f.cible, f.degats, 'fleche'); f.vie = 0;
         // ricochet : la flèche rebondit vers le monstre le plus proche (une seule fois)
         if (!f.ricochet && Math.random() < 0.17 * nv('ricochet')) {
@@ -2337,7 +2356,7 @@ function mettreAJour(dt) {
       r.fini = true;
       const pz = perspective(r.y1 + 12), zone = zoneCata() * pz;
       for (const e of vivants) if (Math.hypot(e.x - r.x1, e.y - r.y1) < zone + e.r * 0.5 * pz) {
-        blesser(e, r.degats, 'roc');
+        blesser(e, r.degats, 'roc', r.poudre ? 'Poudrerie' : 'Catapultes');
         if (!r.poudre && alliance('ardents') && !e.mort) e.brule = Math.max(e.brule || 0, FEU.duree);
       }
       G.ondes.push({ x: r.x1, y: r.y1, t: 0, zone });
@@ -2393,6 +2412,7 @@ function mettreAJour(dt) {
     G.sceauxGagnes = Math.floor(G.t / 60) + (G.nouveauRecord ? 5 : 0); sceaux += G.sceauxGagnes; sauverHeritage();
     G.piecesGagnees = piecesDePartie(G.t, G.kills); pieces += G.piecesGagnees; sauverPieces();
     profil.meilleur = Math.max(profil.meilleur || 0, G.t); sauverProfil();
+    setTimeout(() => sauverEnLigne(true), 1500); // après l'inscription du score
     G.avatarsNouveaux = AVATARS.filter(a => avatarDebloque(a) && G.avatarsAvant && !G.avatarsAvant.has(a.id)).map(a => a.nom);
     // le score est inscrit tout seul au classement, sous le pseudo du profil (parties d'au moins 10 s)
     if (profil.pseudo && G.t >= 10) {
@@ -2710,7 +2730,7 @@ function lancerSort(s) {
   } else if (s.id === 'brume') {
     G.brume = BRUME_DUREE;
   } else if (s.id === 'raz') {
-    G.raz = imagesVague ? { t: 0, y: MUR_Y, monte: true, touches: new Set() } : { y: Y_HORIZON - 60, touches: new Set() };
+    G.raz = imagesVague ? { t: 0, y: MUR_Y, monte: true, touches: new Set() } : { y: Y_HORIZON - 60, touches: new Set() }; secouer(4);
   } else if (s.id === 'rempart') {
     const soin = Math.round(G.mur.max * 0.4);
     G.mur.pv = Math.min(G.mur.max, G.mur.pv + soin); G.rempartFlash = 0.8;
@@ -4050,7 +4070,7 @@ function dessinerJeu() {
       ctx.fillStyle = halo; ctx.fillRect(tx.x - 22, y - 26, 56, 52);
       ctx.globalAlpha = a;
       if (tx.cristal) cristalIcone(ctx, tx.x - 11, y, 7.5, '#2c4268');
-      else coeur(tx.x - 11, y, 7, ROUGE);
+      else if (!tx.critique) coeur(tx.x - 11, y, 7, ROUGE);
       texte(tx.txt, tx.x - 1, y + 1, 17, tx.cristal ? '#2c4268' : ROUGE, 'left', 'bold');
     }
     ctx.globalAlpha = 1;
@@ -5086,6 +5106,14 @@ function ouvrirProfil(puisJouer) {
       <input data-p="pseudo" maxlength="16" placeholder="Pseudo" style="font:clamp(18px,4.4vw,23px) Plume,Georgia,serif;padding:6px 10px;border:3px solid #1b1719;border-radius:8px;background:#fbf4e8;color:#1b1719;width:min(60vw,230px)"></div>
     </div>
     <div data-p="stats" style="text-align:center;font-size:clamp(13px,3.2vw,16px);color:#5a4632;margin:10px 0 6px"></div>
+    <div style="margin:8px auto 4px;padding:8px 10px;max-width:420px;border-top:1px solid rgba(27,23,25,.18);border-bottom:1px solid rgba(27,23,25,.18);text-align:center">
+      <div style="font:clamp(15px,3.6vw,18px) Pinceau,sans-serif">Sauvegarde en ligne</div>
+      <div data-p="code" style="font-size:clamp(14px,3.4vw,17px);color:#3a3230;margin:3px 0"></div>
+      <div style="font-size:clamp(12px,3vw,14px);color:#6a5a48">Sur un autre appareil, entrez votre code pour retrouver votre progression :</div>
+      <input data-p="saisieCode" maxlength="14" placeholder="XXXX-XXXX-XXXX" style="font:clamp(15px,3.6vw,18px) Plume,Georgia,serif;padding:4px 8px;border:2px solid #1b1719;border-radius:6px;background:#fbf4e8;color:#1b1719;width:min(48vw,170px);text-transform:uppercase;margin-top:4px">
+      <button data-p="recuperer" style="font:clamp(13px,3.2vw,16px) Pinceau,sans-serif;padding:6px 10px;margin-left:4px;border:2px solid #1b1719;background:#efe3cc;color:#1b1719;cursor:pointer">Récupérer</button>
+      <div data-p="etatCode" style="font-size:clamp(12px,3vw,14px);color:#8e1a20;min-height:16px;margin-top:3px"></div>
+    </div>
     <div style="font:clamp(17px,4vw,21px) Pinceau,sans-serif;text-align:center;margin:8px 0 6px">Avatars</div>
     <div data-p="grille" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px 4px"></div>
     <div data-p="etat" style="text-align:center;color:#8e1a20;min-height:20px;margin-top:8px;font-size:clamp(14px,3.4vw,17px)"></div>
@@ -5120,10 +5148,16 @@ function ouvrirProfil(puisJouer) {
   const valider = () => {
     const p = nettoyerPseudo(el('pseudo').value);
     if (!p) { el('etat').textContent = 'Choisissez un pseudo (16 lettres au plus).'; el('pseudo').focus(); return; }
-    profil.pseudo = p; profil.avatar = choix; sauverProfil(); ecrireLocal('muraille-pseudo', p);
+    profil.pseudo = p; profil.avatar = choix; sauverProfil(); ecrireLocal('muraille-pseudo', p); sauverEnLigne(true);
     const suite = apresProfil; fermerProfil(); if (suite) suite();
   };
   el('valider').onclick = valider;
+  el('code').textContent = codeSauvegarde ? `Votre code : ${codeLisible(codeSauvegarde)}${etatSauvegarde === 'ok' ? '  ✓ sauvegardé' : ''}` : 'Votre code sera créé dès que vous aurez un pseudo.';
+  el('recuperer').onclick = async () => {
+    el('etatCode').textContent = 'Recherche…';
+    const msg = await recupererSauvegarde(el('saisieCode').value);
+    el('etatCode').textContent = msg;
+  };
   el('fermer').onclick = () => fermerProfil();
   el('pseudo').addEventListener('keydown', ev => { if (ev.key === 'Enter') valider(); if (ev.key === 'Escape') fermerProfil(); });
   f.addEventListener('pointerdown', ev => { if (ev.target === f) fermerProfil(); });
@@ -5134,6 +5168,66 @@ function ouvrirProfil(puisJouer) {
 function fermerProfil() { if (fenetreProfil && fenetreProfil.parentNode) fenetreProfil.remove(); fenetreProfil = null; profilOuvert = false; apresProfil = null; }
 // « Jouer » : sans pseudo, on passe d'abord par le profil
 function allerPreparer() { if (!profil.pseudo) ouvrirProfil(true); else ecran = 'preparation'; }
+// =====================================================================
+//  SAUVEGARDE EN LIGNE : la progression (record, pièces, cartes, héritage, profil, succès…) est copiée dans Supabase
+//  sous un code secret de 12 caractères (localStorage 'muraille-code'), toutes les 20 s si elle a changé et à chaque
+//  fin de partie. Au lancement, si la copie en ligne est plus récente (jouée sur un autre appareil), on la reprend.
+//  Sur un nouvel appareil : fenêtre du profil → entrer son code → « Récupérer ». Script : classement/sauvegardes.sql.
+//  Les réglages du son restent propres à chaque appareil.
+// =====================================================================
+const CLES_SAUVEGARDE = ['muraille-record', 'muraille-sceaux', 'muraille-heritage', 'muraille-pieces', 'muraille-cartes',
+  'muraille-plateau', 'muraille-tuto', 'muraille-profil', 'muraille-pseudo', 'muraille-succes', 'muraille-defis'];
+const ALPHABET_CODE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const lireBrut = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const ecrireBrut = (k, v) => { try { if (v === null || v === undefined) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* ignoré */ } };
+let codeSauvegarde = (lireBrut('muraille-code') || '').toUpperCase();
+let dernierEnvoi = '', etatSauvegarde = ''; // '' | 'ok' | 'hors ligne'
+function nouveauCode() {
+  const t = new Uint32Array(12); (crypto.getRandomValues ? crypto.getRandomValues(t) : t.forEach((_, i) => { t[i] = Math.random() * 1e9; }));
+  return [...t].map(v => ALPHABET_CODE[v % ALPHABET_CODE.length]).join('');
+}
+const codeLisible = c => c ? c.match(/.{1,4}/g).join('-') : '';
+function collecterSauvegarde() { const d = {}; for (const k of CLES_SAUVEGARDE) { const v = lireBrut(k); if (v !== null) d[k] = v; } return d; }
+async function sauverEnLigne(force) {
+  if (!classementEnLigne() || !profil.pseudo) return;
+  if (!codeSauvegarde) { codeSauvegarde = nouveauCode(); ecrireBrut('muraille-code', codeSauvegarde); }
+  const donnees = collecterSauvegarde(), texteD = JSON.stringify(donnees);
+  if (!force && texteD === dernierEnvoi) return;
+  try {
+    const maj = await appelSupabase('rpc/sauver_profil', { method: 'POST', body: JSON.stringify({ p_cle: codeSauvegarde, p_pseudo: profil.pseudo, p_donnees: donnees }) });
+    dernierEnvoi = texteD; ecrireBrut('muraille-synchro', String(Date.parse(maj) || Date.now())); etatSauvegarde = 'ok';
+  } catch (e) { etatSauvegarde = 'hors ligne'; }
+}
+async function chargerEnLigne(code) {
+  const r = await appelSupabase('rpc/charger_profil', { method: 'POST', body: JSON.stringify({ p_cle: code }) });
+  return Array.isArray(r) && r.length ? { donnees: r[0].donnees, maj: Date.parse(r[0].maj) } : null;
+}
+function appliquerSauvegarde(donnees, maj) {
+  for (const k of CLES_SAUVEGARDE) ecrireBrut(k, k in donnees ? donnees[k] : null);
+  ecrireBrut('muraille-synchro', String(maj));
+  location.reload();
+}
+// au lancement : reprendre la copie en ligne si elle est plus récente que la dernière synchronisation de cet appareil
+(async () => {
+  if (!codeSauvegarde || !classementEnLigne() || !location.protocol.startsWith('http')) return;
+  try {
+    const s = await chargerEnLigne(codeSauvegarde);
+    if (s && s.maj > (+lireBrut('muraille-synchro') || 0) + 1000 && JSON.stringify(s.donnees) !== JSON.stringify(collecterSauvegarde())) appliquerSauvegarde(s.donnees, s.maj);
+    else dernierEnvoi = s ? JSON.stringify(s.donnees) : '';
+  } catch (e) { /* hors ligne : on garde la progression de cet appareil */ }
+})();
+setInterval(() => sauverEnLigne(false), 20000);
+addEventListener('visibilitychange', () => { if (document.hidden) sauverEnLigne(false); });
+// récupérer une progression avec un code (nouvel appareil)
+async function recupererSauvegarde(saisie) {
+  const code = String(saisie || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 12) return 'Le code fait 12 caractères (par exemple ABCD-EFGH-JKLM).';
+  let s; try { s = await chargerEnLigne(code); } catch (e) { return 'Pas de connexion : réessayez plus tard.'; }
+  if (!s) return 'Aucune sauvegarde avec ce code.';
+  codeSauvegarde = code; ecrireBrut('muraille-code', code);
+  appliquerSauvegarde(s.donnees, s.maj);
+  return '';
+}
 function dessinerAccueil() {
   const t = performance.now() / 1000;
   if (imageMenu && !sousMenu) {
@@ -5577,7 +5671,43 @@ function dessinerFin() {
   medaillonRetour(BTN_CLASSEMENT_FIN, 'classement', G.scoreInscrit ? 'Classement' : 'Inscrire mon score');
   if (G.inscription) texte({ 'en cours': 'Inscription au classement…', 'en ligne': `Score inscrit au classement mondial (${profil.pseudo}) ✓`,
     local: 'Score gardé sur cet appareil (classement en ligne injoignable)' }[G.inscription], W / 2, 614, 14, G.inscription === 'en ligne' ? '#2f6b2a' : '#7a6a55', 'center', 'italic bold', SERIF, W - 40);
+  dessinerStatsFin();
   if (heritageOuvert) dessinerHeritage();
+}
+// « Ce qui a tenu la muraille » : les 5 sources de dégâts les plus fortes (barres), et la vie de la muraille au fil
+// de la partie (courbe rouge, une valeur toutes les 5 s)
+const CARTE_STATS = { x: 22, y: 724, w: W - 44, h: 222 };
+let fondStats = null;
+function dessinerStatsFin() {
+  const st = Object.entries(G.stats || {}).filter(([, v]) => v > 0.5).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (!st.length && !(G.histoMur && G.histoMur.length > 1)) return;
+  const R = CARTE_STATS, m = 24;
+  if (!fondStats) fondStats = papierFondu(R.w + 2 * m, R.h + 2 * m, 40);
+  ctx.drawImage(fondStats, R.x - m, R.y - m);
+  texte('Ce qui a tenu la muraille', R.x + 26, R.y + 24, 18, ENCRE, 'left', 'bold');
+  const total = st.reduce((t, [, v]) => t + v, 0) || 1, bx = R.x + 26, bw = 210;
+  st.forEach(([nom, v], i) => {
+    const y = R.y + 56 + i * 31, part = v / total;
+    texte(nom, bx, y, 14, ENCRE, 'left', 'bold', SANS, 110);
+    ctx.fillStyle = 'rgba(27,23,25,0.12)'; ctx.fillRect(bx + 114, y - 6, bw, 12);
+    ctx.fillStyle = i === 0 ? ROUGE : '#3a3230'; ctx.fillRect(bx + 114, y - 6, Math.max(2, bw * part), 12);
+    texte(`${Math.round(part * 100)} %`, bx + 114 + bw + 8, y, 13, '#5a4632', 'left', 'bold');
+  });
+  // courbe de la muraille
+  const h = G.histoMur || [], cx = R.x + R.w - 250, cw = 222, cy = R.y + 52, ch = 120;
+  texte('Muraille', cx, R.y + 24, 15, ENCRE, 'left', 'bold');
+  ctx.save();
+  ctx.strokeStyle = 'rgba(27,23,25,0.25)'; ctx.lineWidth = 1; ctx.strokeRect(cx, cy, cw, ch);
+  ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(cx, cy + ch / 2); ctx.lineTo(cx + cw, cy + ch / 2); ctx.stroke(); ctx.setLineDash([]);
+  if (h.length > 1) {
+    ctx.strokeStyle = ROUGE; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath();
+    h.forEach((v, i) => { const x = cx + i / (h.length - 1) * cw, y = cy + ch - v * ch; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
+  ctx.restore();
+  texte('00:00', cx, cy + ch + 13, 11, '#7a6a55', 'left', 'italic', SERIF);
+  texte(formatTemps(G.t), cx + cw, cy + ch + 13, 11, '#7a6a55', 'right', 'italic', SERIF);
+  texte('100 %', cx - 4, cy + 4, 10, '#7a6a55', 'right', 'italic', SERIF);
 }
 
 // =====================================================================
@@ -5594,6 +5724,10 @@ function boucle(maintenant) {
   else {
     // accéléré : on découpe le pas de temps pour garder une simulation stable (pas ≤ 1/60 s environ)
     majTuto();
+    if (!G.effondrement) { // secousse (le pavillon qui s'effondre gère la sienne)
+      G.secousse = Math.max(0, (G.secousse || 0) - dt * 14); const sc = G.secousse;
+      canvas.style.transform = sc > 0.3 && !G.pause ? `translate(${rand(-sc, sc).toFixed(1)}px, ${rand(-sc, sc).toFixed(1)}px)` : '';
+    }
     if (!G.pause && !G.choixNiveau && !G.reliquesOuvert && !tutoActif) {
       if (!G.effondrement) { profil.tempsTotal += dt; profil.aSauver = (profil.aSauver || 0) + dt; if (profil.aSauver > 10) { profil.aSauver = 0; sauverProfil(); } }
       const n = Math.ceil(G.vitesse);
