@@ -1811,7 +1811,7 @@ function tomberSamourai(s) {
   eclabousser(s.x, s.y - 18, 8, 160, 1.6);
 }
 const POUDRE = { degats: 24, recharge: 5.5, zone: 70, duree: 4, dps: 10 };
-function ajouterMortier() { const x = POSTES_CATAS[G.mortiers.length]; G.mortiers.push({ x, y: murHaut(x) - 2, cd: rand(1, 2), recul: 0 }); }
+function ajouterMortier() { const x = POSTES_CATAS[G.mortiers.length]; G.mortiers.push({ x, y: murHaut(x) - 2, cd: rand(1, 2), recul: 0, anim: -1 }); }
 const DRAGON = { degats: 85, vitesse: 760, bande: 42 };
 const degatsDragon = () => DRAGON.degats * (1 + 0.4 * Math.max(0, G.bat.pagode - 1)) * multDegats() * (1 + 0.17 * nv('mortiers'))
   * (1 + 0.15 * prestige('pagode')) * (G.talents.pagode ? 1.6 : 1) * (1 + 0.03 * G.t / 60);
@@ -1820,6 +1820,7 @@ function majPoudreEtDragon(dt, vivants) {
   // mortiers à poudre : visent le groupe le plus dense, comme les catapultes
   for (const m of G.mortiers) {
     m.cd -= dt; m.recul = Math.max(0, m.recul - dt * 3);
+    if (m.anim >= 0) { m.anim += dt; if (m.anim * MORTIER_SPRITE.ipsTir >= 13) m.anim = -1; }
     if (m.cd > 0) continue;
     let cible = null, meilleur = -1;
     const echant = vivants.length > 50 ? vivants.filter(() => Math.random() < 50 / vivants.length) : vivants;
@@ -1831,7 +1832,7 @@ function majPoudreEtDragon(dt, vivants) {
       if (n > meilleur) { meilleur = n; cible = e; }
     }
     if (!cible) { m.cd = 0.3; continue; }
-    m.cd = POUDRE.recharge * (1 - 0.1 * nv('treuils')) * rand(0.9, 1.1); m.recul = 1;
+    m.cd = POUDRE.recharge * (1 - 0.1 * nv('treuils')) * rand(0.9, 1.1); m.recul = 1; m.anim = 0;
     const ty = cible.auMur ? cible.y : Math.min(cible.y + vitesseEcran(cible) * CATAPULTE.vol, murHaut(cible.x) - cible.taille * 1.1 - ARRET_MUR);
     const bonus = (1 + 0.17 * nv('mortiers')) * (1 + 0.15 * prestige('poudrerie')) * (G.talents.poudrerie ? 1.4 : 1);
     G.rochers.push({ x0: m.x, y0: m.y - 20, x1: cible.x, y1: ty, t: 0, degats: POUDRE.degats * md * bonus,
@@ -3578,8 +3579,58 @@ function dessinerBaliste(b) {
   if (b.cd < rechargeBaliste() * 0.7) { ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(0, 4 + r); ctx.lineTo(0, -26 + r); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, -31 + r); ctx.lineTo(-4, -24 + r); ctx.lineTo(4, -24 + r); ctx.fill(); }
   ctx.restore();
 }
-// mortier à poudre : fût trapu cerclé, mèche rouge quand il est prêt
-function dessinerMortier(m) {
+// ---------------------------------------------------------------------
+//  Mortier dessiné (assets/mortier.webp, planche du joueur, 8 × 3 images sur fond magenta) : ligne 0 = repos (le
+//  drapeau flotte), ligne 1 = le fût se lève (images 0-2, juste avant le tir) puis l'éclair et la flamme (3-7, dès le
+//  tir), ligne 2 = la fumée se dissipe. Le magenta est retiré au chargement ; la fumée et les flammes, à demi
+//  transparentes, retrouvent leur couleur (on « démélange » le magenta). Repli : le mortier dessiné par le code.
+// ---------------------------------------------------------------------
+const MORTIER_SPRITE = { src: 'assets/mortier.webp', colonnes: 8, rangees: 3, hauteur: 52, ipsRepos: 7, ipsTir: 16, avant: 0.22 };
+let plancheMortier = null;
+{ const img = new Image(); img.onload = () => { try { plancheMortier = preparerMortier(img); } catch (e) { plancheMortier = null; } }; img.src = MORTIER_SPRITE.src; }
+function preparerMortier(img) {
+  const w = img.width, h = img.height, c = creerCanvas(w, h), k = c.getContext('2d');
+  k.drawImage(img, 0, 0);
+  const id = k.getImageData(0, 0, w, h), d = id.data, K = [255, 0, 255];
+  for (let p = 0; p < d.length; p += 4) {
+    const m = Math.min(d[p], d[p + 2]) - d[p + 1], a = clamp((170 - m) / 120, 0, 1);
+    if (a <= 0.02) { d[p + 3] = 0; continue; }
+    if (a < 1) for (let i = 0; i < 3; i++) d[p + i] = clamp(Math.round((d[p + i] - (1 - a) * K[i]) / a), 0, 255); // démélange
+    { const r = d[p], g = d[p + 1], b = d[p + 2]; if (r - g > 22 && b - g > 22 && !(r > 170 && g > 80)) { const gr = Math.round((r + g + b) / 3 * 0.8); d[p] = d[p + 1] = d[p + 2] = gr; } } // fumée violacée → grise
+    if (a < 0.92) { // fumée : gris neutre (le démélange laisse des reflets violets ou verts) ; les flammes gardent leur chaleur
+      const r = d[p], g = d[p + 1], b = d[p + 2], gris = (r + g + b) / 3, flamme = r > 170 && g > 80 && b < g;
+      if (!flamme) { d[p] = d[p + 1] = d[p + 2] = Math.round(gris * 0.85); }
+    }
+    d[p + 3] = Math.round(255 * a);
+  }
+  k.putImageData(id, 0, 0);
+  const cw = w / MORTIER_SPRITE.colonnes, ch = h / MORTIER_SPRITE.rangees, cases = [];
+  for (let r = 0; r < MORTIER_SPRITE.rangees; r++) for (let q = 0; q < MORTIER_SPRITE.colonnes; q++) {
+    const x0 = Math.round(q * cw), y0 = Math.round(r * ch), x1 = Math.round((q + 1) * cw), y1 = Math.round((r + 1) * ch);
+    let bas = -1, haut = -1;
+    for (let y = y1 - 1; y >= y0 && bas < 0; y--) for (let x = x0; x < x1; x += 2) if (d[(y * w + x) * 4 + 3] > 200) { bas = y; break; }
+    for (let y = y0; y < y1 && haut < 0; y++) for (let x = x0; x < x1; x += 2) if (d[(y * w + x) * 4 + 3] > 200) { haut = y; break; }
+    let sx = 0, n = 0;
+    for (let y = Math.max(y0, bas - 12); y <= bas; y++) for (let x = x0; x < x1; x++) if (d[(y * w + x) * 4 + 3] > 200) { sx += x; n++; }
+    cases.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0, pieds: [n ? sx / n : (x0 + x1) / 2, bas < 0 ? y1 : bas], taille: bas - haut });
+  }
+  const taille = cases.slice(0, 8).reduce((t, c) => t + c.taille, 0) / 8; // hauteur au repos (drapeau compris)
+  return { c, cases, echelle: MORTIER_SPRITE.hauteur / taille };
+}
+function dessinerMortierSprite(m, i) {
+  const P = plancheMortier, S = MORTIER_SPRITE;
+  let n;
+  if (m.anim >= 0) { // après le tir : éclair et flamme (ligne 1, 3-7) puis fumée (ligne 2)
+    const f = Math.floor(m.anim * S.ipsTir);
+    n = f < 5 ? 8 + 3 + f : f - 5 < 8 ? 16 + (f - 5) : 0;
+  } else if (m.cd < S.avant) n = 8 + Math.min(2, Math.floor((1 - m.cd / S.avant) * 3)); // le fût se lève
+  else n = Math.floor(G.t * S.ipsRepos + i * 3) % 8; // repos : le drapeau flotte
+  const C = P.cases[n], e = P.echelle;
+  ctx.drawImage(P.c, C.x, C.y, C.w, C.h, m.x - (C.pieds[0] - C.x) * e, m.y + 2 - (C.pieds[1] - C.y) * e, C.w * e, C.h * e);
+}
+// mortier à poudre (repli) : fût trapu cerclé, mèche rouge quand il est prêt
+function dessinerMortier(m, i) {
+  if (plancheMortier) { dessinerMortierSprite(m, i); return; }
   ctx.save(); ctx.translate(m.x, m.y + m.recul * 2);
   ctx.fillStyle = ENCRE; ctx.strokeStyle = ENCRE; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.ellipse(0, -2, 15, 5, 0, 0, 7); ctx.fill();

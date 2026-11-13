@@ -65,6 +65,11 @@ silhouettes noires, muraille à pavillon, bannières rouges, braseros, cartes pa
   En ouvrant `index.html` directement (file://), le navigateur peut refuser les polices : polices de secours.
 
 ## Sprites dessinés (assets/)
+- **Mortiers de la Poudrerie (13/11/2026)** : planche du joueur `assets/mortier.webp` (8 × 3 sur fond magenta,
+  original dans `sources/`), détourée au chargement (`preparerMortier` : magenta retiré, fumée et flammes « démélangées »,
+  fumée ramenée au gris neutre ; pieds mesurés image par image). Repos = ligne 0 (le drapeau flotte), juste avant le
+  tir = ligne 1 images 0-2 (le fût se lève, `MORTIER_SPRITE.avant` 0,22 s), au tir = ligne 1 images 3-7 (éclair,
+  flamme) puis ligne 2 (la fumée se dissipe) ; hauteur 52 px. Repli : l'ancien mortier dessiné par le code.
 - **Archers impériaux (12/11/2026)** : quand le **Temple** est choisi et au **niveau max (5)**, les archers prennent
   l'apparence impériale (casque à plumet rouge, tunique blanche) et leurs flèches font **+50 %** de dégâts
   (`archersImperiaux`, `IMPERIAL.bonus` ; bannière « Archers impériaux » ; annoncé dans la fiche du Temple dès le
